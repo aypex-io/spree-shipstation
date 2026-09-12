@@ -15,12 +15,41 @@ RSpec.describe(Spree::Shipstation::Export::ItemPresenter) do
 
   it("exposes the unit price") { expect(presenter.unit_price).to eq(line_item.price) }
 
-  it("counts the inventory units as the quantity") do
-    expect(presenter.quantity).to eq(units.size)
-  end
-
   it("builds a Weight value object from the variant") do
     expect(presenter.weight).to eq(Spree::Shipstation::Export::Weight.from_variant(line_item.variant))
+  end
+
+  describe "#quantity" do
+    # An order placed with quantity N gets ONE inventory unit carrying
+    # quantity: N (Spree::Stock::InventoryUnitBuilder), not N unit rows.
+    def rebuild_units_for(quantities)
+      shipment.inventory_units.destroy_all
+      quantities.each do |quantity|
+        shipment.inventory_units.create!(
+          order_id: shipment.order_id,
+          variant_id: line_item.variant_id,
+          line_item_id: line_item.id,
+          quantity: quantity
+        )
+      end
+      shipment.inventory_units.reload.to_a
+    end
+
+    it("reports a single unit's quantity") do
+      expect(described_class.new(line_item, rebuild_units_for([1])).quantity).to eq(1)
+    end
+
+    it("reports the quantity carried by one inventory unit") do
+      line_item.update_columns(quantity: 2)
+
+      expect(described_class.new(line_item, rebuild_units_for([2])).quantity).to eq(2)
+    end
+
+    it("sums the quantity when a line is split across several inventory units") do
+      line_item.update_columns(quantity: 3)
+
+      expect(described_class.new(line_item, rebuild_units_for([2, 1])).quantity).to eq(3)
+    end
   end
 
   describe "#name" do
