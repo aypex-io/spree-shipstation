@@ -60,10 +60,16 @@ module Spree
         end
 
         ##
+        # The number of items to ship, summed across the line's inventory units.
+        #
+        # Spree stores a quantity on each +Spree::InventoryUnit+ rather than one
+        # row per item, so counting rows under-reports any line ordered more
+        # than once.
+        #
         # @return [Integer]
         #
         def quantity
-          units.size
+          units.sum(&:quantity)
         end
 
         ##

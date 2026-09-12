@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented in this file.
 
+## 5.0.1
+
+### Fixed
+
+- Export the correct `<Quantity>` for lines ordered more than once. Spree 5 stores
+  a quantity on each `Spree::InventoryUnit` rather than creating one unit row per
+  item, so counting rows reported every line as a quantity of 1 and ShipStation
+  under-picked multi-quantity orders. The quantity is now summed across the
+  line's inventory units, which also keeps a line split across shipments
+  reporting only the units in its own shipment.
+
 ## 5.0.0
 
 First public release on RubyGems, as `spree-shipstation`.
