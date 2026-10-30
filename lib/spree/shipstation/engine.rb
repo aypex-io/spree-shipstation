@@ -3,7 +3,7 @@
 module Spree
   module Shipstation
     ##
-    # Rails engine that loads decorator files and registers ShipStation assets.
+    # Rails engine that loads this extension's decorator files.
     #
     class Engine < ::Rails::Engine
       require "spree/core"
@@ -16,10 +16,6 @@ module Spree
       # use rspec for tests
       config.generators do |g|
         g.test_framework :rspec
-      end
-
-      initializer "spree_shipstation.assets" do |app|
-        app.config.assets.precompile += %w[spree_shipstation_manifest] if app.config.respond_to?(:assets)
       end
 
       def self.activate
