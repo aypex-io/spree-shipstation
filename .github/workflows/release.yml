@@ -46,9 +46,9 @@ jobs:
       # rubygems/release-gem preloads a RubyGems patch (RUBYOPT -r) that
       # activates zlib, openssl and a few other default gems before Bundler
       # starts, at the newest version installed system-wide. When the lockfile
-      # pins a newer one (the PayPal SDK pulls in zlib through faraday-gzip),
-      # Bundler refuses to start. Install the locked versions system-wide so
-      # RubyGems activates those instead.
+      # pins a newer one (for example openssl), Bundler refuses to start.
+      # Install the locked versions system-wide so RubyGems activates those
+      # instead.
       - name: Install the locked versions of gems the release patch preloads
         run: |
           preloaded=$(ruby -e 'before = Gem.loaded_specs.keys; require "rubygems/commands/push_command"; puts Gem.loaded_specs.keys - before')
