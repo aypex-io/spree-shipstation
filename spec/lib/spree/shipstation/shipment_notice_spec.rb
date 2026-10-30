@@ -99,6 +99,29 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
           .to raise_error(Spree::Shipstation::ShipmentNotFoundError)
       end
 
+      # New fulfillments store no number, so a lookup on nil would match them all.
+      it("does not find a parcel when the order number is missing") do
+        paid_order
+        expect { notice(nil).apply }
+          .to raise_error(Spree::Shipstation::ShipmentNotFoundError)
+      end
+
+      it("does not find a parcel when the order number is empty") do
+        paid_order
+        expect { notice("").apply }
+          .to raise_error(Spree::Shipstation::ShipmentNotFoundError)
+      end
+
+      it("does not fulfill any parcel when the order number is missing") do
+        order = paid_order
+        begin
+          notice(nil).apply
+        rescue Spree::Shipstation::ShipmentNotFoundError
+          nil
+        end
+        expect(parcel_of(order).reload).to be_unfulfilled
+      end
+
       it("names the number it could not find") do
         expect { notice("DOES-NOT-EXIST").apply }
           .to raise_error(Spree::Shipstation::ShipmentNotFoundError, "Could not find shipment with number DOES-NOT-EXIST")
@@ -215,7 +238,7 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
       it("refuses a number the parcel already carries on another delivery") do
         Spree.delivery_create_service.call(owner: parcel_of(order), tracking_number: "B2")
         expect { notice(number, tracking: "B2").apply }
-          .to raise_error(Spree::Shipstation::FulfillmentRefusedError)
+          .to raise_error(Spree::Shipstation::FulfillmentRefusedError, "Tracking number has already been taken")
       end
     end
 

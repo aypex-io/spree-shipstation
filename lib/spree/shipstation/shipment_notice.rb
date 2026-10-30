@@ -15,8 +15,9 @@ module Spree
     # * a canceled one is refused;
     # * any other goes through Spree's fulfil workflow, which checks the order is
     #   paid and in stock, records the tracking and carrier, captures payments
-    #   that capture on dispatch, and publishes the event that sends the
-    #   customer's shipped email.
+    #   that capture on dispatch, and publishes +fulfillment.fulfilled+ with
+    #   +notify_customer+ set. The host app's subscriber to that event decides
+    #   whether, and how, to tell the customer.
     #
     # @example
     #   Spree::Shipstation::ShipmentNotice.from_payload(
@@ -103,6 +104,10 @@ module Spree
       private
 
       def find_fulfillment
+        # New fulfillments store no number, so looking up a blank one would match
+        # every one of them and fulfil an arbitrary parcel.
+        raise ShipmentNotFoundError, shipment_number if shipment_number.blank?
+
         find_by_stored_number || find_by_derived_number || raise(ShipmentNotFoundError, shipment_number)
       end
 
@@ -116,7 +121,9 @@ module Spree
         return unless match
 
         order = store.orders.find_by(number: match[:order])
-        order&.fulfillments&.detect { |fulfillment| fulfillment.number == shipment_number }
+        return unless order
+
+        order.fulfillments.detect { |fulfillment| fulfillment.number == shipment_number }
       end
 
       def apply_to(fulfillment)
