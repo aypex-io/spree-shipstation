@@ -17,9 +17,10 @@ as they were. A store other than the default moves to its integration's URL
 **Run `bin/rake spree:upgrade` right after `db:migrate`, before ShipStation next
 polls.** Spree's upgrade tasks move 5.x shipment statuses to fulfillment statuses
 (`ready` and `pending` become `unfulfilled`, `shipped` becomes `fulfilled`),
-backfill the delivery-method providers the pickup rule reads, recompute orders'
-payment and fulfillment statuses, and carry `auto_capture_on_dispatch` over to
-the store's `capture_method`. Until then the export is empty. See "Upgrading
+backfill the delivery-method providers the pickup rule reads, recompute the
+statuses of orders whose shipments were pending, ready or shipped, encrypt stored
+secrets, and carry `auto_capture_on_dispatch` over to the store's
+`capture_method`. Until then the export is empty. See "Upgrading
 from 5.0" in the README.
 
 **Requirements:** Spree `~> 6.0`, Ruby 3.3 or newer, pagy 43.6 or newer. The 5.x
@@ -71,8 +72,9 @@ releases do not install on Spree 6.
   given 25.) A `page` that is not a number is read as page 1.
 - The integration appears in Spree 6's dashboard under the shipping group, with a
   description, logo and link to the README. Its form is generated from the
-  username and password preferences. Spree 6's migrations move the password into
-  `secret_preferences`, encrypted when Active Record encryption is configured.
+  username and password preferences. Spree 6's migration copies the password into
+  `secret_preferences` as plain text, and `bin/rake spree:upgrade` encrypts it
+  when Active Record encryption keys are configured.
 - Both endpoints now run on a plain `ActionController::Base` controller, since
   Spree 6 removed the base controller and helper the 5.x one used.
 
