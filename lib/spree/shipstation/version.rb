@@ -2,8 +2,9 @@
 
 module Spree
   module Shipstation
-    # Major version tracks Spree's major version: 5.x supports Spree 5.x.
-    VERSION = "5.0.1"
+    # Major version tracks Spree's major version: 6.x supports Spree 6; 5.0.x
+    # lives on +5-0-stable+.
+    VERSION = "6.0.0"
 
     ##
     # Gem version as a comparable +Gem::Version+.

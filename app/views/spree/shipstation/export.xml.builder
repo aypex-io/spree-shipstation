@@ -1,8 +1,8 @@
 xml.instruct!
 
 xml.Orders(pages: @pagy.pages) do
-  @shipments.each do |shipment|
-    order = Spree::Shipstation::Export::OrderPresenter.new(shipment)
+  @fulfillments.each do |fulfillment|
+    order = Spree::Shipstation::Export::OrderPresenter.new(fulfillment)
 
     xml.Order do
       xml.OrderID order.order_id
@@ -27,13 +27,15 @@ xml.Orders(pages: @pagy.pages) do
       xml.Items do
         order.items.each do |item|
           weight = item.weight
-          image = item.image
+          # The thumbnail may be a video. Its still image is the poster, and is
+          # nil for an embedded video, which has no attachment to link to.
+          still_image = item.image&.still_image
 
           xml.Item do
             xml.SKU item.sku
             xml.Name item.name
 
-            image_url = image && url_for(image.attachment)
+            image_url = still_image && url_for(still_image)
             xml.ImageUrl image_url if image_url
 
             xml.Weight weight.value
@@ -43,10 +45,10 @@ xml.Orders(pages: @pagy.pages) do
 
             if item.option_values.present?
               xml.Options do
-                item.option_values.each do |value|
+                item.option_values.each do |name, value|
                   xml.Option do
-                    xml.Name value.option_type.presentation
-                    xml.Value value.name
+                    xml.Name name
+                    xml.Value value
                   end
                 end
               end

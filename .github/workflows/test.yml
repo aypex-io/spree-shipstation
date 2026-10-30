@@ -1,5 +1,6 @@
 ---
 name: CI
+
 on:
   pull_request:
     branches:
@@ -7,26 +8,59 @@ on:
   push:
     branches:
     - main
+    - 6-0-stable
+  # Weekly, so a new Spree release is tested even when nothing is pushed
+  # ("latest" in the matrix resolves fresh on every run).
+  schedule:
+  - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# Keyed by event too, so the weekly or a manual run on a branch never cancels a
+# push run on it, or the other way round.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  sqlite:
+  tests:
+    # The oldest Spree the gemspec supports and the newest release it allows,
+    # each on the oldest supported Ruby and the current one. Gemfile.lock is
+    # not committed, so "latest" resolves fresh on every run.
+    name: Tests (Spree ${{ matrix.spree || 'latest' }}, Ruby ${{ matrix.ruby }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        ruby: ['3.4']
-        gemfile: [spree_5_2, spree_5_3, spree_5_4]
+        spree: ['6.0.0', '']
+        ruby: ['3.3', '4.0']
     env:
-      BUNDLE_GEMFILE: ${{ github.workspace }}/gemfiles/${{ matrix.gemfile }}.gemfile
-      BUNDLE_PATH_RELATIVE_TO_CWD: true
       RAILS_ENV: test
+      CI: true
+      SPREE_VERSION: ${{ matrix.spree }}
     steps:
     - uses: actions/checkout@v6
     - name: Set up Ruby ${{ matrix.ruby }}
       uses: ruby/setup-ruby@v1
       with:
         ruby-version: ${{ matrix.ruby }}
-        bundler-cache: false
-    - name: Bundle Install
-      run: bundle install
+        bundler-cache: true
+    - name: Show resolved versions
+      # Block scalar: in a plain one-line value YAML reads " #" as a comment.
+      run: |
+        bundle exec ruby -e 'puts "Ruby #{RUBY_VERSION}"; %w[spree spree_core rails].each { |g| puts "#{g} #{Gem.loaded_specs[g]&.version}" }'
     - name: Run Tests
       run: bundle exec rake
+
+  # The single check branch protection requires, so the matrix can change
+  # without editing the protection rule. always(): a skipped required check
+  # counts as passed, so this must run and fail when anything above fails.
+  tests-passed:
+    name: Tests
+    if: always()
+    needs: [tests]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Require every matrix job to pass
+      run: |
+        echo "tests: ${{ needs.tests.result }}"
+        test "${{ needs.tests.result }}" = success

@@ -20,14 +20,46 @@ module Spree
     end
 
     ##
-    # Raised when a pending payment cannot be captured during shipnotify.
+    # Raised when the ship notice's +OrderID+ names a fulfillment of a different
+    # order from the one its order number names.
+    #
+    class ShipmentMismatchError < Error
+      ##
+      # @param shipment_number [String] the order number from the notice
+      # @param shipment_id [Integer] the +OrderID+ from the notice
+      #
+      def initialize(shipment_number, shipment_id, *args)
+        super("Shipment #{shipment_number} does not match order id #{shipment_id}", *args)
+      end
+    end
+
+    ##
+    # Raised when the shipnotify payload names a shipment Spree has canceled.
+    #
+    class FulfillmentCanceledError < Error
+      ##
+      # @param shipment_number [String] the number of the canceled shipment
+      #
+      def initialize(shipment_number, *args)
+        super("Shipment #{shipment_number} is canceled", *args)
+      end
+    end
+
+    ##
+    # Raised when Spree refuses to fulfil the shipment, for instance because the
+    # order is not paid or holds backordered items. The message is Spree's own.
+    #
+    class FulfillmentRefusedError < Error; end
+
+    ##
+    # Raised when a payment cannot be captured during shipnotify.
     #
     class PaymentError < Error
       ##
-      # @param payment [Spree::Payment] the payment that failed to capture
+      # @param message [String] why the capture failed, as the gateway reported it
       #
-      def initialize(payment, *args)
-        super("Could not process payment #{payment.id}", *args)
+      def initialize(message, *args)
+        super("Could not capture payment: #{message}", *args)
       end
     end
 

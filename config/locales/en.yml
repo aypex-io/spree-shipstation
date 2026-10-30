@@ -1,15 +1,14 @@
 ---
 en:
   spree:
+    integrations:
+      shipstation:
+        description: Integrate with ShipStation to automate your shipping workflows from a single dashboard.
     admin:
       integrations:
         shipstation:
+          brand_name: ShipStation
           must_contain_at_least_one_special_character: must contain at least one special character
           must_contain_at_least_one_uppercase_letter: must contain at least one uppercase letter
           must_contain_at_least_one_number: must contain at least one number
           username_chars_error: can only contain letters, numbers, and . _ @ + -
-          username: Username
-          password: Password
-          brand_name: ShipStation
-          description: Integrate with ShipStation to automate your shipping workflows from a single dashboard.
-          capture_at_notification: Capture payment when shipment notification received from ShipStation
