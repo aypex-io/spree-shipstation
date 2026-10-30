@@ -3,7 +3,6 @@
 require "pagy"
 
 require "spree_core"
-require "spree_extension"
 
 require "spree/shipstation/version"
 require "spree/shipstation/engine"

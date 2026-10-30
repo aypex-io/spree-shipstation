@@ -23,19 +23,18 @@ task :test_app do
   # literal `require ENV['LIB_NAME']` and templates the same string into the
   # generated spec/dummy/config/application.rb.
   ENV["LIB_NAME"] = "spree/shipstation"
-  Rake::Task["extension:test_app"].execute(
-    install_admin: true
-  )
+  # Spree 6's extension:test_app takes no install_admin option.
+  Rake::Task["extension:test_app"].execute
 end
 
 namespace :dummy do
   # Spree's test_app task runs `db:migrate` in the generator's own process with
-  # output redirected to /dev/null and its exit status ignored. On the heavier
-  # Spree 5.3+/5.4 setup path (admin install + Tailwind/asset build) that step
-  # can be interrupted mid schema-dump, leaving a TRUNCATED db/schema.rb. Rails
-  # then loads that broken dump on the next migrate and fails, so the dummy
-  # database ends up empty and the whole suite errors with
-  # "Could not find table 'spree_*'".
+  # output redirected to /dev/null and its exit status ignored. If a migration
+  # fails partway (for example, Spree's preferences conversion eager loads the
+  # whole app, so any class that fails to load stops it), the dummy database is
+  # left half-built and the whole suite errors with weird failures or
+  # "Could not find table 'spree_*'", with no hint of the cause. Rails then
+  # loads a possibly truncated db/schema.rb dump on the next migrate too.
   #
   # Make setup deterministic: discard any (possibly corrupt) schema dump and
   # rebuild the database from the migration files, in a fresh process and

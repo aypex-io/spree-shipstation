@@ -17,7 +17,7 @@ module Spree
       validates :preferred_username,
         format: {
           with: /\A[a-zA-Z0-9._@+-]+\z/,
-          message: Spree.t("admin.integrations.shipstation.username_chars_error")
+          message: ->(_record, _data) { I18n.t("spree.admin.integrations.shipstation.username_chars_error") }
         },
         allow_blank: true
 
@@ -30,21 +30,21 @@ module Spree
       validates :preferred_password,
         format: {
           with: /[!@#$%^&*(),.?":{}|<>]/,
-          message: Spree.t("admin.integrations.shipstation.must_contain_at_least_one_special_character")
+          message: ->(_record, _data) { I18n.t("spree.admin.integrations.shipstation.must_contain_at_least_one_special_character") }
         },
         allow_blank: true
 
       validates :preferred_password,
         format: {
           with: /[A-Z]/,
-          message: Spree.t("admin.integrations.shipstation.must_contain_at_least_one_uppercase_letter")
+          message: ->(_record, _data) { I18n.t("spree.admin.integrations.shipstation.must_contain_at_least_one_uppercase_letter") }
         },
         allow_blank: true
 
       validates :preferred_password,
         format: {
           with: /\d/,
-          message: Spree.t("admin.integrations.shipstation.must_contain_at_least_one_number")
+          message: ->(_record, _data) { I18n.t("spree.admin.integrations.shipstation.must_contain_at_least_one_number") }
         },
         allow_blank: true
 
@@ -72,7 +72,7 @@ module Spree
       # @return [String]
       #
       def self.integration_name
-        Spree.t("admin.integrations.shipstation.brand_name")
+        I18n.t("spree.admin.integrations.shipstation.brand_name")
       end
     end
   end

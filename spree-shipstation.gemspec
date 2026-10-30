@@ -11,7 +11,7 @@ Gem::Specification.new do |s|
   s.version = Spree::Shipstation.version
   s.summary = "ShipStation integration for Spree e-commerce"
   s.description = "Connects Spree stores to ShipStation via an XML export endpoint and shipnotify webhook, enabling automated label creation and shipment tracking."
-  s.required_ruby_version = ">= 3.1"
+  s.required_ruby_version = ">= 3.3"
 
   s.author = "Matthew Kennedy"
   s.email = "m.kennedy@me.com"
@@ -28,9 +28,6 @@ Gem::Specification.new do |s|
   s.files = `git ls-files`.split("\n").reject { |f| f.match(/^spec/) && !f.match(%r{^spec/fixtures}) }
   s.require_path = "lib"
 
-  spree_version = ">= 5.0", "< 6.0"
-
-  s.add_dependency "pagy", ">= 43.0", "< 45.0"
-  s.add_dependency "spree", spree_version
-  s.add_dependency "spree_extension"
+  s.add_dependency "pagy", ">= 43.6", "< 45"
+  s.add_dependency "spree", "~> 6.0"
 end

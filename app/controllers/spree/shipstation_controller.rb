@@ -4,8 +4,7 @@ module Spree
   ##
   # HTTP endpoints ShipStation polls for ready shipments and posts ship notices to.
   #
-  class ShipstationController < Spree::BaseController
-    include Spree::IntegrationsHelper
+  class ShipstationController < ActionController::Base
     include Pagy::Method
 
     protect_from_forgery with: :null_session, only: :shipnotify

@@ -106,7 +106,7 @@ RSpec.describe(Spree::Integrations::Shipstation) do
     end
 
     it("exposes a brand integration name") do
-      expect(described_class.integration_name).to eq(Spree.t("admin.integrations.shipstation.brand_name"))
+      expect(described_class.integration_name).to eq(I18n.t("spree.admin.integrations.shipstation.brand_name"))
     end
 
     it("points at the ShipStation logo asset") do
