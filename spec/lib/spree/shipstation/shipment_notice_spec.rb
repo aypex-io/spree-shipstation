@@ -35,11 +35,29 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
     Spree.fulfillment_fulfill_workflow.call(fulfillment: parcel, tracking: tracking)
   end
 
-  def notice(number, tracking: "1Z999AA10123456784", carrier: nil, store: self.store)
+  def notice(number, tracking: "1Z999AA10123456784", carrier: nil, order_id: nil, store: self.store)
     described_class.from_payload(
-      {order_number: number, tracking_number: tracking, carrier: carrier},
+      {order_number: number, tracking_number: tracking, carrier: carrier, order_id: order_id},
       store: store
     )
+  end
+
+  # Moves a line out of a parcel into a new parcel of its own, the way the
+  # dashboard splits one, and returns the new parcel. Spree destroys a parcel
+  # that is left with no items.
+  def move_line(line, out_of:)
+    Spree.fulfillment_create_workflow.call(
+      order: out_of.order,
+      stock_location: out_of.stock_location,
+      items: [{line_item: line, quantity: line.quantity}],
+      source_fulfillment: out_of
+    ).value
+  end
+
+  # The number a parcel derives now, read afresh rather than from an order
+  # whose parcels are cached.
+  def current_number(parcel)
+    Spree::Fulfillment.find(parcel.id).number
   end
 
   # Spree sends no email itself. A dispatch publishes "fulfillment.fulfilled",
@@ -64,6 +82,16 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
       )
 
       expect(built).to have_attributes(shipment_number: "R1-F1", shipment_tracking: "T1", shipment_carrier: "UPS")
+    end
+
+    it("reads ShipStation's OrderID when it is given") do
+      built = described_class.from_payload({order_number: "R1-F1", tracking_number: "T1", order_id: 42}, store: store)
+      expect(built.shipment_id).to eq(42)
+    end
+
+    it("leaves the OrderID empty when it is not given") do
+      built = described_class.from_payload({order_number: "R1-F1", tracking_number: "T1"}, store: store)
+      expect(built.shipment_id).to be_nil
     end
   end
 
@@ -125,6 +153,96 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
       it("names the number it could not find") do
         expect { notice("DOES-NOT-EXIST").apply }
           .to raise_error(Spree::Shipstation::ShipmentNotFoundError, "Could not find shipment with number DOES-NOT-EXIST")
+      end
+    end
+
+    context "when the notice carries ShipStation's OrderID" do
+      it("finds the parcel the OrderID names") do
+        order = paid_order
+        expect(notice("#{order.number}-F1", order_id: parcel_of(order).id).apply).to eq(parcel_of(order))
+      end
+
+      it("finds a parcel from before Spree 6 by its stored number and OrderID") do
+        order = paid_order
+        parcel_of(order).update_column(:number, "H12345678901")
+        expect(notice("H12345678901", order_id: parcel_of(order).id).apply).to eq(parcel_of(order))
+      end
+
+      it("trusts the OrderID when no parcel derives the number any more") do
+        order = paid_order
+        expect(notice("#{order.number}-F5", order_id: parcel_of(order).id).apply).to eq(parcel_of(order))
+      end
+
+      it("does not find a parcel when the number names no order") do
+        order = paid_order
+        expect { notice("DOES-NOT-EXIST", order_id: parcel_of(order).id).apply }
+          .to raise_error(Spree::Shipstation::ShipmentNotFoundError, "Could not find shipment with number DOES-NOT-EXIST")
+      end
+
+      it("does not find a parcel whose OrderID is in another store") do
+        order = paid_order
+        other_parcel = parcel_of(paid_order(store: create(:store)))
+        expect { notice(parcel_of(order).number, order_id: other_parcel.id).apply }
+          .to raise_error(Spree::Shipstation::ShipmentNotFoundError)
+      end
+
+      it("refuses an OrderID that belongs to another of the store's orders") do
+        number = parcel_of(paid_order).number
+        other_parcel = parcel_of(paid_order)
+        expect { notice(number, order_id: other_parcel.id).apply }
+          .to raise_error(Spree::Shipstation::ShipmentMismatchError, "Shipment #{number} does not match order id #{other_parcel.id}")
+      end
+
+      it("does not fulfil the other order's parcel") do
+        number = parcel_of(paid_order).number
+        other_parcel = parcel_of(paid_order)
+        begin
+          notice(number, order_id: other_parcel.id).apply
+        rescue Spree::Shipstation::ShipmentMismatchError
+          nil
+        end
+        expect(other_parcel.reload).to be_unfulfilled
+      end
+    end
+
+    # ShipStation imported two parcels, one line each. Then the first parcel's
+    # only line was moved into a new parcel, so Spree destroyed the first and
+    # every parcel after it moved up a place: the second now derives the first's
+    # old number, and the new parcel the second's.
+    context "when Spree has dissolved a parcel ShipStation imported" do
+      let(:order) { paid_order(line_items_count: 2) }
+      let!(:first) { parcel_of(order) }
+      let!(:second) { move_line(order.line_items.second, out_of: first) }
+      let!(:imported_numbers) { [current_number(first), current_number(second)] }
+      let!(:replacement) { move_line(order.line_items.first, out_of: first) }
+
+      def apply_dissolved_notice
+        notice(imported_numbers.first, order_id: first.id).apply
+      rescue Spree::Shipstation::ShipmentNotFoundError
+        nil
+      end
+
+      it("renumbers the parcels after it") do
+        expect([current_number(second), current_number(replacement)]).to eq(imported_numbers)
+      end
+
+      it("fulfils the parcel the OrderID names") do
+        expect(notice(imported_numbers.second, order_id: second.id).apply).to eq(second)
+      end
+
+      it("leaves the parcel that now derives that number unfulfilled") do
+        notice(imported_numbers.second, order_id: second.id).apply
+        expect(replacement.reload).to be_unfulfilled
+      end
+
+      it("refuses the dissolved parcel's notice") do
+        expect { notice(imported_numbers.first, order_id: first.id).apply }
+          .to raise_error(Spree::Shipstation::ShipmentNotFoundError, "Could not find shipment with number #{imported_numbers.first}")
+      end
+
+      it("fulfils nothing for the dissolved parcel's notice") do
+        apply_dissolved_notice
+        expect(order.fulfillments.reload.map(&:status)).to eq(%w[unfulfilled unfulfilled])
       end
     end
 

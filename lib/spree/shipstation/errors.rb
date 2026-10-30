@@ -20,6 +20,20 @@ module Spree
     end
 
     ##
+    # Raised when the ship notice's +OrderID+ names a fulfillment of a different
+    # order from the one its order number names.
+    #
+    class ShipmentMismatchError < Error
+      ##
+      # @param shipment_number [String] the order number from the notice
+      # @param shipment_id [Integer] the +OrderID+ from the notice
+      #
+      def initialize(shipment_number, shipment_id, *args)
+        super("Shipment #{shipment_number} does not match order id #{shipment_id}", *args)
+      end
+    end
+
+    ##
     # Raised when the shipnotify payload names a shipment Spree has canceled.
     #
     class FulfillmentCanceledError < Error

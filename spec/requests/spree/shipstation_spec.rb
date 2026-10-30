@@ -28,11 +28,44 @@ RSpec.describe("ShipStation endpoints", type: :request) do
     Nokogiri::XML(response.body).xpath("//Order/OrderNumber").map(&:text)
   end
 
-  # ShipStation puts the notice in the query string and sends an XML body that
-  # the endpoint does not read.
-  def ship_notice(path, number:, tracking: "1Z999AA10123456784", carrier: "UPS", headers: {}, **extra)
+  # ShipStation puts the notice in the query string and sends it again as an XML
+  # body, of which the endpoint reads only the OrderID.
+  def ship_notice(path, number:, tracking: "1Z999AA10123456784", carrier: "UPS", body: "<ShipNotice/>", headers: {}, **extra)
     query = {order_number: number, tracking_number: tracking, carrier: carrier, **extra}.to_query
-    post "#{path}?#{query}", params: "<ShipNotice/>", headers: headers.merge("CONTENT_TYPE" => "text/xml")
+    post "#{path}?#{query}", params: body, headers: headers.merge("CONTENT_TYPE" => "text/xml")
+  end
+
+  # A ship notice body as ShipStation sends it, with generic values.
+  def ship_notice_xml(number:, order_id:)
+    <<~XML
+      <?xml version="1.0" encoding="utf-8"?>
+      <ShipNotice>
+        <OrderNumber>#{number}</OrderNumber>
+        <OrderID>#{order_id}</OrderID>
+        <CustomerCode>customer@example.com</CustomerCode>
+        <LabelCreateDate>10/30/2026 09:15</LabelCreateDate>
+        <ShipDate>10/30/2026</ShipDate>
+        <Carrier>UPS</Carrier>
+        <Service>UPS Ground</Service>
+        <TrackingNumber>1Z999AA10123456784</TrackingNumber>
+        <ShippingCost>4.95</ShippingCost>
+        <Recipient>
+          <Name>Jane Doe</Name>
+          <Address1>1 Example Street</Address1>
+          <City>Springfield</City>
+          <State>IL</State>
+          <PostalCode>62701</PostalCode>
+          <Country>US</Country>
+        </Recipient>
+        <Items>
+          <Item>
+            <SKU>SKU-1</SKU>
+            <Name>Example product</Name>
+            <Quantity>1</Quantity>
+          </Item>
+        </Items>
+      </ShipNotice>
+    XML
   end
 
   def window(from, to)
@@ -265,6 +298,46 @@ RSpec.describe("ShipStation endpoints", type: :request) do
       it("names the parcel it could not find") do
         ship_notice("/shipstation", number: "NOPE-F1", headers: credentials(integration))
         expect(response.body).to eq("Could not find shipment with number NOPE-F1")
+      end
+
+      context "when the body carries an OrderID" do
+        let(:other_parcel) { parcel_of(paid_order) }
+
+        def notice_with_order_id(order_id, body: ship_notice_xml(number: parcel.number, order_id: order_id))
+          ship_notice("/shipstation", number: parcel.number, body: body, headers: credentials(integration))
+        end
+
+        it("fulfils the parcel when the OrderID matches") do
+          notice_with_order_id(parcel.id)
+          expect(parcel.reload.status).to eq("fulfilled")
+        end
+
+        it("answers an OrderID from another order with 400") do
+          notice_with_order_id(other_parcel.id)
+          expect(response).to have_http_status(:bad_request)
+        end
+
+        it("explains an OrderID from another order") do
+          notice_with_order_id(other_parcel.id)
+          expect(response.body).to eq("Shipment #{parcel.number} does not match order id #{other_parcel.id}")
+        end
+
+        it("ignores an OrderID that is not a whole number") do
+          notice_with_order_id("12abc")
+          expect(response).to have_http_status(:ok)
+        end
+
+        it("ignores a body that is not well-formed XML") do
+          notice_with_order_id(other_parcel.id, body: "<ShipNotice><OrderID>#{other_parcel.id}</OrderID>")
+          expect(response).to have_http_status(:ok)
+        end
+
+        it("ignores a body over 64 KB") do
+          padded = ship_notice_xml(number: parcel.number, order_id: other_parcel.id)
+            .sub("</ShipNotice>", "<InternalNotes>#{"x" * 64.kilobytes}</InternalNotes></ShipNotice>")
+          notice_with_order_id(other_parcel.id, body: padded)
+          expect(response).to have_http_status(:ok)
+        end
       end
 
       context "when forgery protection is on" do

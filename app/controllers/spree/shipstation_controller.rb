@@ -22,6 +22,10 @@ module Spree
     PER_PAGE = 50
     private_constant :PER_PAGE
 
+    # A ship notice body is a few kilobytes. A larger one is not parsed.
+    MAX_NOTICE_BYTES = 64.kilobytes
+    private_constant :MAX_NOTICE_BYTES
+
     # Forgery protection is the default for this controller, so an action added
     # later is protected until it says otherwise. ShipStation's two actions opt
     # out: HTTP Basic is their authentication and there is no session to forge.
@@ -51,12 +55,14 @@ module Spree
 
     ##
     # Applies a ship notice from ShipStation and fulfils the parcel. The notice
-    # travels in the query string; the XML body ShipStation also sends is not read.
+    # travels in the query string. Of the XML body ShipStation also sends, only
+    # the +OrderID+ is read.
     #
     # @return [void]
     #
     def shipnotify
-      Shipstation::ShipmentNotice.from_payload(notice_params, store: @integration.store).apply
+      payload = notice_params.merge(order_id: notice_order_id)
+      Shipstation::ShipmentNotice.from_payload(payload, store: @integration.store).apply
       head :ok
     rescue Shipstation::Error => e
       Rails.logger.error("ShipStation Notification Error: #{e.message}")
@@ -71,6 +77,21 @@ module Spree
     def notice_params
       params.slice(:order_number, :tracking_number, :carrier)
         .permit(:order_number, :tracking_number, :carrier).to_h
+    end
+
+    # The +OrderID+ from the notice's XML body: the fulfillment's id, as the
+    # export sent it. Parsed strictly and with Nokogiri's defaults otherwise, so
+    # no network access and no entity expansion. A body that is empty, too
+    # large or not well-formed, or an +OrderID+ that is missing or not a whole
+    # number, gives nil, and the notice is matched on its number alone.
+    def notice_order_id
+      body = request.raw_post
+      return if body.blank? || body.bytesize > MAX_NOTICE_BYTES
+
+      text = Nokogiri::XML(body, &:strict).at_xpath("/ShipNotice/OrderID")&.text.to_s.strip
+      text.to_i if text.match?(/\A\d+\z/)
+    rescue Nokogiri::XML::SyntaxError
+      nil
     end
 
     # Finds the active integration this request is for and makes its store the
