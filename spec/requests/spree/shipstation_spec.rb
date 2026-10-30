@@ -4,11 +4,10 @@ RSpec.describe("ShipStation endpoints", type: :request) do
   let!(:store) { create(:store, default: true) }
   let(:integration) { create(:shipstation_integration, store: store) }
 
-  # Basic auth the way ShipStation sends it.
-  def credentials(integration)
-    {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials(
-      integration.preferred_username, integration.preferred_password
-    )}
+  # Basic auth the way ShipStation sends it. Pass a username or password to send
+  # something other than what the integration holds.
+  def credentials(integration, username: integration.preferred_username, password: integration.preferred_password)
+    {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials(username, password)}
   end
 
   # A placed order, paid in full, whose only parcel is unfulfilled and ready to ship.
@@ -31,8 +30,8 @@ RSpec.describe("ShipStation endpoints", type: :request) do
 
   # ShipStation puts the notice in the query string and sends an XML body that
   # the endpoint does not read.
-  def ship_notice(path, number:, tracking: "1Z999AA10123456784", carrier: "UPS", headers: {})
-    query = {order_number: number, tracking_number: tracking, carrier: carrier}.to_query
+  def ship_notice(path, number:, tracking: "1Z999AA10123456784", carrier: "UPS", headers: {}, **extra)
+    query = {order_number: number, tracking_number: tracking, carrier: carrier, **extra}.to_query
     post "#{path}?#{query}", params: "<ShipNotice/>", headers: headers.merge("CONTENT_TYPE" => "text/xml")
   end
 
@@ -74,18 +73,21 @@ RSpec.describe("ShipStation endpoints", type: :request) do
       end
 
       it("answers a pull with the wrong username with 401") do
-        headers = {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials(
-          "some_wrong_username", integration.preferred_password
-        )}
-        get "/shipstation.xml", headers: headers
+        get "/shipstation.xml", headers: credentials(integration, username: "some_wrong_username")
         expect(response).to have_http_status(:unauthorized)
       end
 
       it("answers a pull with the wrong password with 401") do
-        headers = {"HTTP_AUTHORIZATION" => ActionController::HttpAuthentication::Basic.encode_credentials(
-          integration.preferred_username, "not_the_correct-password"
-        )}
-        get "/shipstation.xml", headers: headers
+        get "/shipstation.xml", headers: credentials(integration, password: "not_the_correct-password")
+        expect(response).to have_http_status(:unauthorized)
+      end
+
+      it("answers blank credentials with 401 when the stored password is blank") do
+        # Validations make a blank password unreachable through normal saves, so
+        # it is written past them.
+        integration.preferred_password = ""
+        integration.save!(validate: false)
+        get "/shipstation.xml", headers: credentials(integration)
         expect(response).to have_http_status(:unauthorized)
       end
 
@@ -257,6 +259,11 @@ RSpec.describe("ShipStation endpoints", type: :request) do
 
       it("answers a ship notice for an unknown parcel with 400") do
         ship_notice("/shipstation", number: "NOPE-F1", headers: credentials(integration))
+        expect(response).to have_http_status(:bad_request)
+      end
+
+      it("names the parcel it could not find") do
+        ship_notice("/shipstation", number: "NOPE-F1", headers: credentials(integration))
         expect(response.body).to eq("Could not find shipment with number NOPE-F1")
       end
 
@@ -353,6 +360,30 @@ RSpec.describe("ShipStation endpoints", type: :request) do
         other_integration.update!(active: false)
         get "#{other_path}.xml", headers: credentials(other_integration)
         expect(response).to have_http_status(:not_found)
+      end
+
+      it("answers a ship notice for an inactive integration's URL with 404") do
+        other_integration.update!(active: false)
+        ship_notice(other_path, number: parcel_of(other_order).number, headers: credentials(other_integration))
+        expect(response).to have_http_status(:not_found)
+      end
+
+      context "when unpermitted parameters raise" do
+        around do |example|
+          previous = ActionController::Parameters.action_on_unpermitted_parameters
+          ActionController::Parameters.action_on_unpermitted_parameters = :raise
+          example.run
+        ensure
+          ActionController::Parameters.action_on_unpermitted_parameters = previous
+        end
+
+        # The integration id, and whatever else ShipStation adds to the query,
+        # are not part of the notice.
+        it("still fulfils the other store's parcel") do
+          parcel = parcel_of(other_order)
+          ship_notice(other_path, number: parcel.number, service: "Ground", headers: credentials(other_integration))
+          expect(parcel.reload.status).to eq("fulfilled")
+        end
       end
 
       it("answers a ship notice for an unknown integration id with 404") do

@@ -56,10 +56,7 @@ module Spree
     # @return [void]
     #
     def shipnotify
-      Shipstation::ShipmentNotice.from_payload(
-        params.permit(:order_number, :tracking_number, :carrier).to_h,
-        store: @integration.store
-      ).apply
+      Shipstation::ShipmentNotice.from_payload(notice_params, store: @integration.store).apply
       head :ok
     rescue Shipstation::Error => e
       Rails.logger.error("ShipStation Notification Error: #{e.message}")
@@ -68,16 +65,24 @@ module Spree
 
     private
 
+    # Only the notice's own fields. Sliced first, so the integration id, the
+    # format and ShipStation's other query params are never "unpermitted", which
+    # would raise in a host app that treats them so.
+    def notice_params
+      params.slice(:order_number, :tracking_number, :carrier)
+        .permit(:order_number, :tracking_number, :carrier).to_h
+    end
+
     # Finds the active integration this request is for and makes its store the
     # current one. Anything else is a 404, before the caller is asked who they are.
     def find_integration
-      @integration = integration_scope
+      @integration = resolve_integration
       return head :not_found unless @integration
 
       Spree::Current.store = @integration.store
     end
 
-    def integration_scope
+    def resolve_integration
       if params[:integration_id].present?
         Spree::Integrations::Shipstation.active.find_by_prefix_id(params[:integration_id])
       else
@@ -97,6 +102,9 @@ module Spree
 
     def authenticate_shipstation
       authenticate_or_request_with_http_basic do |username, password|
+        # Credentials the integration does not hold would match anything blank.
+        next false if @integration.preferred_username.blank? || @integration.preferred_password.blank?
+
         # A non-short-circuiting & so both fields are always compared, and the
         # time taken does not reveal whether the username matched.
         ActiveSupport::SecurityUtils.secure_compare(username.to_s, @integration.preferred_username.to_s) &
