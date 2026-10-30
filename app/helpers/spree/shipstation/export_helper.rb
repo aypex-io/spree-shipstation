@@ -39,7 +39,7 @@ module Spree
           return unless address
 
           xml.tag!(tag_name) do
-            xml.Name name_from(address)
+            xml.Name address.full_name
             xml.Company address.company
 
             if include_street
@@ -47,22 +47,16 @@ module Spree
               xml.Address2 address.address2
               xml.City address.city
               xml.State state_from(address)
-              xml.PostalCode address.zipcode
-              xml.Country address.country&.iso
+              xml.PostalCode address.postal_code
+              xml.Country address.country_code
             end
 
             xml.Phone address.phone
           end
         end
 
-        def name_from(address)
-          return address.name if address.respond_to?(:name)
-
-          address.try(:full_name)
-        end
-
         def state_from(address)
-          address.state&.abbr || address.state_name
+          address.state_code.presence || address.state_name
         end
       end
     end

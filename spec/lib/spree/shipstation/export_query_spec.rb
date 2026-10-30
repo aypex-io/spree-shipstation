@@ -340,7 +340,7 @@ RSpec.describe(Spree::Shipstation::ExportQuery) do
           product_variant.product.name
           product_variant.options_text
           product_variant.option_values.map { |value| value.option_type.label }
-          product_variant.thumbnail&.attachment&.blob
+          product_variant.thumbnail&.still_image&.blob
         end
       end
     end

@@ -4,82 +4,102 @@ require "spec_helper"
 
 RSpec.describe(Spree::Shipstation::Export::ItemPresenter) do
   let!(:store) { create(:store, default: true) }
-  let(:order) { create(:order_ready_to_ship, store: store) }
-  let(:shipment) { order.shipments.first }
-  let(:line_item) { shipment.inventory_units.first.line_item }
-  let(:units) { shipment.inventory_units.select { |unit| unit.line_item == line_item } }
+  let(:option_type) { create(:option_type, label: "Size") }
+  let(:option_value) { create(:option_value, option_type: option_type, name: "small", label: "S") }
+  let(:variant) { create(:variant, option_values: [option_value]) }
+  let(:order) { create(:order_ready_to_ship, store: store, variants: [variant]) }
+  let(:fulfillment) { order.fulfillments.first }
+  let(:fulfillment_items) { fulfillment.fulfillment_items.to_a }
+  let(:line_item) { fulfillment_items.first.line_item }
 
-  subject(:presenter) { described_class.new(line_item, units) }
+  subject(:presenter) { described_class.new(line_item, fulfillment_items) }
 
-  it("exposes the variant sku") { expect(presenter.sku).to eq(line_item.variant.sku) }
+  it("exposes the variant sku") { expect(presenter.sku).to eq(variant.sku) }
 
   it("exposes the unit price") { expect(presenter.unit_price).to eq(line_item.price) }
 
   it("builds a Weight value object from the variant") do
-    expect(presenter.weight).to eq(Spree::Shipstation::Export::Weight.from_variant(line_item.variant))
+    expect(presenter.weight).to eq(Spree::Shipstation::Export::Weight.from_variant(variant))
   end
 
   describe "#quantity" do
-    # An order placed with quantity N gets ONE inventory unit carrying
-    # quantity: N (Spree::Stock::InventoryUnitBuilder), not N unit rows.
-    def rebuild_units_for(quantities)
-      shipment.inventory_units.destroy_all
-      quantities.each do |quantity|
-        shipment.inventory_units.create!(
-          order_id: shipment.order_id,
-          variant_id: line_item.variant_id,
-          line_item_id: line_item.id,
-          quantity: quantity
-        )
+    # A line ordered N times is stored as ONE fulfillment item carrying
+    # quantity N, not as N rows, and a line may also be split across several.
+    def items_of(quantities)
+      line = line_item
+      fulfillment.fulfillment_items.destroy_all
+      quantities.map do |quantity|
+        fulfillment.fulfillment_items.create!(order: order, variant: line.variant, line_item: line, quantity: quantity)
       end
-      shipment.inventory_units.reload.to_a
     end
 
-    it("reports a single unit's quantity") do
-      expect(described_class.new(line_item, rebuild_units_for([1])).quantity).to eq(1)
+    it("reports a single item's quantity") do
+      expect(described_class.new(line_item, items_of([1])).quantity).to eq(1)
     end
 
-    it("reports the quantity carried by one inventory unit") do
-      line_item.update_columns(quantity: 2)
-
-      expect(described_class.new(line_item, rebuild_units_for([2])).quantity).to eq(2)
+    it("reports the quantity carried by one fulfillment item") do
+      expect(described_class.new(line_item, items_of([3])).quantity).to eq(3)
     end
 
-    it("sums the quantity when a line is split across several inventory units") do
-      line_item.update_columns(quantity: 3)
-
-      expect(described_class.new(line_item, rebuild_units_for([2, 1])).quantity).to eq(3)
+    it("sums the quantity when a line is split across several fulfillment items") do
+      expect(described_class.new(line_item, items_of([2, 1])).quantity).to eq(3)
     end
   end
 
   describe "#name" do
-    it("joins the product name with the variant options text, dropping blanks") do
-      allow(line_item.variant).to receive(:options_text).and_return("")
-
-      expect(presenter.name).to eq(line_item.variant.product.name)
+    it("joins the product name with the variant options text") do
+      expect(presenter.name).to eq("#{variant.product.name} Size: S")
     end
 
-    it("includes the options text when present") do
-      allow(line_item.variant).to receive(:options_text).and_return("Size: L")
+    context "when the variant has no options" do
+      let(:variant) { create(:variant, option_values: []) }
 
-      expect(presenter.name).to eq("#{line_item.variant.product.name} Size: L")
+      it("is the product name alone") do
+        expect(presenter.name).to eq(variant.product.name)
+      end
+    end
+  end
+
+  describe "#option_values" do
+    it("pairs each option type's label with the value's name") do
+      expect(presenter.option_values).to eq([%w[Size small]])
+    end
+
+    context "when the variant has no options" do
+      let(:variant) { create(:variant, option_values: []) }
+
+      it("is empty") { expect(presenter.option_values).to be_empty }
     end
   end
 
   describe "#image" do
-    it("prefers a variant image") do
-      variant_image = instance_double(Spree::Image)
-      allow(line_item.variant).to receive(:images).and_return([variant_image])
-
-      expect(presenter.image).to eq(variant_image)
+    it("is nil when neither the variant nor its product has media") do
+      expect(presenter.image).to be_nil
     end
 
-    it("falls back to the product master image when the variant has none") do
-      master_image = instance_double(Spree::Image)
-      allow(line_item.variant).to receive(:images).and_return([])
-      allow(line_item.variant.product.master).to receive(:images).and_return([master_image])
+    it("is the variant's thumbnail") do
+      create(:media, viewable: variant)
 
-      expect(presenter.image).to eq(master_image)
+      expect(presenter.image).to eq(variant.reload.thumbnail)
+    end
+
+    it("is a Spree::Media") do
+      create(:media, viewable: variant)
+
+      expect(presenter.image).to be_a(Spree::Media)
+    end
+
+    it("falls back to the product's media when the variant has none") do
+      product_media = create(:media, viewable: variant.product)
+
+      expect(presenter.image).to eq(product_media)
+    end
+
+    it("prefers the variant's own media over the product's") do
+      create(:media, viewable: variant.product)
+      variant_media = create(:media, viewable: variant)
+
+      expect(presenter.image).to eq(variant_media)
     end
   end
 end

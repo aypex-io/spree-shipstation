@@ -4,49 +4,58 @@ module Spree
   module Shipstation
     module Export
       ##
-      # Shapes a single +Spree::Shipment+ into the values ShipStation's export XML
-      # expects, keeping data-massaging logic out of the Builder template.
+      # Shapes a single +Spree::Fulfillment+ (a parcel) into the values
+      # ShipStation's export XML expects, keeping data-massaging logic out of the
+      # Builder template.
       #
-      # Note: ShipStation models one "Order" per shipment, so most order-level
-      # fields are derived from +shipment.order+ while identifiers come from the
-      # shipment itself (mirroring the +<OrderNumber>+ = shipment.number contract).
+      # Note: ShipStation models one "Order" per parcel, so most order-level
+      # fields are derived from +fulfillment.order+ while identifiers come from
+      # the fulfillment itself (mirroring the +<OrderNumber>+ = fulfillment.number
+      # contract).
       #
       class OrderPresenter
-        attr_reader :shipment
+        attr_reader :fulfillment
 
         ##
-        # @param shipment [Spree::Shipment] the shipment to export
+        # @param fulfillment [Spree::Fulfillment] the parcel to export
         #
-        def initialize(shipment)
-          @shipment = shipment
+        def initialize(fulfillment)
+          @fulfillment = fulfillment
         end
 
         ##
         # @return [Spree::Order]
         #
         def order
-          shipment.order
+          fulfillment.order
         end
 
         ##
         # @return [Integer]
         #
         def order_id
-          shipment.id
+          fulfillment.id
         end
 
         ##
+        # The number ShipStation echoes back in the ship notice: the stored number
+        # of a parcel created before Spree 6.0, otherwise one derived from its
+        # order, such as +R1001-F1+.
+        #
         # @return [String]
         #
         def order_number
-          shipment.number
+          fulfillment.number
         end
 
         ##
+        # Always +ready+. The export only offers parcels that can ship now, and
+        # merchants' ShipStation status mappings key on this value.
+        #
         # @return [String]
         #
         def order_status
-          shipment.state
+          "ready"
         end
 
         ##
@@ -60,14 +69,16 @@ module Spree
         # @return [String, NilClass]
         #
         def last_modified
-          format_date([order.completed_at, shipment.updated_at].compact.max)
+          format_date([order.completed_at, fulfillment.updated_at].compact.max)
         end
 
         ##
+        # The name of the delivery method selected for the parcel.
+        #
         # @return [String, NilClass]
         #
         def shipping_method_name
-          shipment.shipping_method&.name
+          fulfillment.delivery_method&.name
         end
 
         ##
@@ -85,10 +96,12 @@ module Spree
         end
 
         ##
+        # The order's delivery charge, exported as ShipStation's ShippingAmount.
+        #
         # @return [BigDecimal]
         #
         def ship_total
-          order.ship_total
+          order.delivery_total
         end
 
         ##
@@ -124,15 +137,16 @@ module Spree
         end
 
         ##
-        # One presenter per line item that still has a variant.
+        # One presenter per line item that still has a variant, built from the
+        # parcel's fulfillment items for that line.
         #
         # @return [Array<Spree::Shipstation::Export::ItemPresenter>]
         #
         def items
-          shipment.inventory_units.group_by(&:line_item).filter_map do |line_item, units|
+          fulfillment.fulfillment_items.group_by(&:line_item).filter_map do |line_item, fulfillment_items|
             next unless line_item.variant
 
-            ItemPresenter.new(line_item, units)
+            ItemPresenter.new(line_item, fulfillment_items)
           end
         end
 
