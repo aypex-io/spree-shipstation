@@ -6,10 +6,9 @@ gem "benchmark"
 gem "brakeman", require: false
 gem "bundler-audit", require: false
 gem "rspec-xsd"
-# Constrained here, not only in the gemspec: under Bundler 2 an unconstrained
-# entry in the Gemfile overrides the gemspec and resolves 0.6.3, which cannot
-# load on Spree 6.
-gem "spree_dev_tools", ">= 1.0.0.beta2"
+# Constrained here because the gemspec no longer declares it; Bundler 2 would
+# otherwise resolve 0.6.3, which is broken on Spree 6.
+gem "spree_dev_tools", "~> 1.0"
 gem "standard"
 gem "sqlite3"
 

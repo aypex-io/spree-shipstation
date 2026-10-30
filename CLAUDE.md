@@ -132,4 +132,4 @@ The export is XML with or without the extension (`defaults: {format: "xml"}`). T
 - `spec/lib/spree/shipstation/export_query_spec.rb` covers each export-filter case (paid, unpaid, backordered, free, deferred capture, pickup, canceled, draft, partially refunded) and the date window; `shipment_notice_spec.rb` covers resolution, retries, refusals and capture.
 - `spec/support/xsd.rb` — provides the `pass_validation(xsd_path)` RSpec matcher for XML schema validation.
 - `lib/spree/shipstation/testing_support/factories/shipstation_integration.rb` — FactoryBot factory for `Spree::Integrations::Shipstation`, loaded via `require "spree/shipstation/factories"` in `spec/spec_helper.rb`.
-- `spree_dev_tools` is constrained (`>= 1.0.0.beta2`) in the **Gemfile**, not only the gemspec: under Bundler 2 an unconstrained Gemfile entry overrides the gemspec and resolves a version that cannot load on Spree 6.
+- `spree_dev_tools` is constrained (`~> 1.0`) in the **Gemfile**: the gemspec no longer declares it, and Bundler 2 would otherwise resolve 0.6.3, which is broken on Spree 6.

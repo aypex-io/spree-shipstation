@@ -25,7 +25,11 @@ Gem::Specification.new do |s|
     "rubygems_mfa_required" => "true"
   }
 
-  s.files = `git ls-files`.split("\n").reject { |f| f.match(/^spec/) && !f.match(%r{^spec/fixtures}) }
+  # The specs (all but their fixtures), the design docs, CI config and the agent
+  # guide stay in the repository, out of the gem.
+  s.files = `git ls-files`.split("\n").reject do |f|
+    (f.match(/^spec/) && !f.match(%r{^spec/fixtures})) || f.match(%r{^(docs|\.github)/}) || f == "CLAUDE.md"
+  end
   s.require_path = "lib"
 
   s.add_dependency "pagy", ">= 43.6", "< 45"
