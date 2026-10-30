@@ -34,7 +34,7 @@ The extension registers itself with Spree's integration framework automatically 
 
 ### Step 1: Configuring Spree
 
-Visit the **Integrations** section of your Spree dashboard and configure the ShipStation integration (listed with the shipping integrations) by creating a unique username and password. The username is 10 to 30 characters of letters, numbers and `. _ @ + -`; the password is 20 to 60 characters and needs an uppercase letter, a number and a special character.
+Visit the **Integrations** section of your Spree dashboard and configure the ShipStation integration (listed with the shipping integrations) by creating a unique username and password. The username is 10 to 30 characters of letters, numbers and `. _ @ + -`; the password is 20 to 60 characters and needs an uppercase letter, a number and a special character, one of `! @ # $ % ^ & * ( ) , . ? " : { } | < >`. Other characters such as `-`, `_`, `+` and `=` may appear but do not count as the special character.
 
 ### Step 2: Configuring ShipStation
 
@@ -46,7 +46,7 @@ Enter the following details:
 - **Password**: The password you created in Step 1.
 - **URL to custom page**: `https://shop.example.com/shipstation.xml`.
 
-That URL belongs to your **default store**. To connect a different store (a multi-store setup), use the URL that names its ShipStation integration:
+That URL belongs to your **default store**. Any other store (a multi-store setup) must use the URL that names its ShipStation integration:
 
 ```
 https://shop.example.com/shipstation/int_abc123.xml
@@ -71,11 +71,11 @@ A fulfillment is exported when all of these hold:
 
 - it belongs to the store and is still **unfulfilled**;
 - its order is **placed**, so drafts and canceled orders are left out;
-- its order is **paid**: paid, overcharged or partially refunded; or it owes nothing (a total of zero); or it is only authorized, on a store whose capture method is `on_dispatch` or `manual` (see [Payment capture](#payment-capture));
+- its order is **paid**: paid, overcharged or partially refunded; or it owes nothing (a total of zero); or, on a store whose capture method is `on_dispatch` or `manual`, it is only authorized, or partially paid with the rest authorized (mixed tender, such as store credit plus a card) (see [Payment capture](#payment-capture));
 - **none of its items is backordered**;
 - it is **not a pickup**: fulfillments collected in person (pickup or pickup point delivery methods) are not shipped.
 
-Apart from the pickup rule, these are the checks Spree makes again when the parcel is fulfilled, so ShipStation is not offered parcels Spree would refuse.
+Apart from the pickup rule, these are most of the checks Spree makes again when the parcel is fulfilled, so ShipStation is rarely offered a parcel Spree would refuse. When it is fulfilled, Spree also checks that the stock location has the units on hand, and the limits under [Payment capture](#payment-capture) apply. A parcel refused then gets a `400` with Spree's reason.
 
 ShipStation's `start_date` and `end_date` (`MM/DD/YYYY HH:MM`, UTC) limit the export to fulfillments whose own or whose order's last update falls in that window. A date the gem cannot read is ignored. Results are ordered by last update, oldest first.
 
@@ -83,13 +83,14 @@ ShipStation's `start_date` and `end_date` (`MM/DD/YYYY HH:MM`, UTC) limit the ex
 
 ## What happens on a ship notice
 
-When a label is created, ShipStation posts to the same URL with `order_number` (the `OrderNumber` it was given), `tracking_number` and `carrier` in the query string. The gem finds that fulfillment in the store and:
+When a label is created, ShipStation posts to the same URL with `order_number` (the `OrderNumber` it was given), `tracking_number` and `carrier` in the query string, and the notice again as an XML body that carries the `OrderID` it was given. The gem finds that fulfillment in the store, by its `OrderID` when the body carries one and by its number otherwise, and:
 
 - **fulfils it** through Spree's own fulfil workflow, recording the tracking number, and answers `200`;
 - records the carrier when ShipStation's carrier name matches one of Spree's `tracking_carriers` (for example `UPS`, `USPS`, `FedEx` or `Royal Mail`); otherwise Spree detects it from the tracking number;
 - if the fulfillment is **already fulfilled or delivered**, only records or corrects the tracking number and answers `200`. ShipStation retries, and a retry does not fulfil the parcel or publish the event again. The one exception is a tracking number that is already on a different delivery of the same fulfillment, which is refused (below);
 - otherwise answers `400` with a plain-text reason and changes nothing. ShipStation shows the reason to the warehouse. The reasons include:
-  - `Could not find shipment with number …`, for an unknown or blank number;
+  - `Could not find shipment with number …`, for an unknown or blank number, or an `OrderID` whose fulfillment no longer exists;
+  - `Shipment … does not match order id …`, when the `OrderID` belongs to a fulfillment of another order;
   - `Tracking number is required`;
   - `Shipment … is canceled`;
   - Spree's own message when it refuses to fulfil, for example `This order is not paid for yet`, or its message about backordered units;
@@ -98,6 +99,12 @@ When a label is created, ShipStation posts to the same URL with `order_number` (
 
 The gem never forces a fulfilment past Spree's paid and backordered checks, and never splits a fulfillment.
 
+### Why the `OrderID` comes first
+
+A new fulfillment's number is its place in its order: `R1001-F2` is the second parcel. When every item is moved out of a parcel (with the dashboard's split or change-location actions, say), Spree deletes it, and the parcels after it move up a place and take new numbers. A fulfillment's id never changes, so the gem trusts the `OrderID` over the number. A notice for a renumbered parcel still fulfils the right one, and a notice for a parcel Spree deleted after ShipStation imported it is refused with a `400` rather than fulfilling a sibling that now has its number. Re-import the order from ShipStation to pick up its parcels as they now are.
+
+So, in an order with several parcels, avoid moving every item out of a parcel ShipStation has already imported: that parcel is no longer valid in ShipStation.
+
 ## Configuration
 
 ### Payment capture
@@ -105,13 +112,17 @@ The gem never forces a fulfilment past Spree's paid and backordered checks, and 
 The gem has no capture setting of its own. Capture on dispatch follows Spree 6's `capture_method`, set on the store and optionally overridden by each payment method:
 
 - `checkout` (the default) charges as the order is placed. Authorized orders are not yet paid, so they are not exported.
-- `on_dispatch` authorizes at checkout and charges when the fulfillment is fulfilled. The gem exports authorized orders, and Spree captures the payment as the ship notice is applied. If the gateway declines, ShipStation gets a `400` ("Could not capture payment: …") and nothing is kept: the fulfillment stays unfulfilled, the payment stays pending and any tracking number written during the attempt is rolled back. The next retry, or the merchant's fix to the payment, fulfils it.
-- `manual` authorizes at checkout and leaves charging to your staff. The gem exports authorized orders and Spree lets them ship without charging them.
+- `on_dispatch` authorizes at checkout and charges when the fulfillment is fulfilled. The gem exports authorized orders, and partially paid ones whose rest is authorized, and Spree captures the payment as the ship notice is applied. If the gateway declines, ShipStation gets a `400` ("Could not capture payment: …") and nothing is kept: the fulfillment stays unfulfilled, the payment stays pending and any tracking number written during the attempt is rolled back. The next retry, or the merchant's fix to the payment, fulfils it.
+- `manual` authorizes at checkout and leaves charging to your staff. The gem exports authorized and partially paid orders, and Spree lets them ship without charging them.
 
 Two limits:
 
-- Whether an authorized order is exported depends on the **store's** capture method only. A store that captures at checkout but has a payment method that overrides it to `on_dispatch` never exports that method's authorized orders, and does so silently; to export them, set the store's capture method to `on_dispatch` or `manual`. In the reverse case, a store set to `on_dispatch` with a payment method overridden to capture at checkout, an authorized order is exported and the ship notice is then refused with Spree's reason.
-- A partially refunded order is exported, because the rest of it may still ship, but Spree compares the net captured amount (after refunds) with what the order was due, so the ship notice may still be refused with Spree's reason.
+- Whether an authorized or partially paid order is exported depends on the **store's** capture method only. A store that captures at checkout but has a payment method that overrides it to `on_dispatch` never exports that method's authorized orders, and does so silently. To export them, set the store's capture method to `on_dispatch` or `manual`, bearing in mind that this changes it for every payment method that has no setting of its own. In the reverse case, a store set to `on_dispatch` with a payment method overridden to capture at checkout, an authorized order is exported and the ship notice is then refused with Spree's reason.
+- A partially refunded order is exported, because the rest of it may still ship, but Spree compares the net captured amount (after refunds) with what the order was due, so the ship notice may still be refused with Spree's reason. Likewise a partially paid order ships only while the rest is authorized on payment methods that defer capture.
+
+### Fulfillment providers
+
+Give the delivery methods whose parcels ShipStation ships Spree's **Manual** fulfillment provider. On a ship notice, Spree's fulfil workflow also buys a label and tells the delivery method's provider that the parcel has shipped; for Manual, both do nothing. A provider that buys labels or hands parcels to a 3PL would act a second time for a parcel ShipStation has already shipped. A declined capture on dispatch does not undo those calls either, even though everything Spree wrote is rolled back.
 
 ### Telling the customer
 
@@ -126,11 +137,12 @@ The export endpoint returns up to **50 fulfillments per page**. ShipStation hand
 ## Upgrading from 5.0
 
 - Bump the gem to `~> 6.0` alongside your upgrade to Spree 6.
-- The gem has no data migration of its own. Spree 6's migrations rename shipments to fulfillments, keeping their ids and numbers, and move the integration's password into encrypted storage.
-- **ShipStation needs no changes**: same URL, same credentials, same `OrderNumber` for parcels it has already imported, same `ready` status.
-- New fulfillments are numbered like `R1001-F1`. A multi-store host can point a store's ShipStation at `/shipstation/<integration id>` (see Step 2), since Spree 6 no longer picks the store from the request's host.
-- Capture on dispatch now follows Spree 6's `capture_method` setting (on the store or the payment method), not `auto_capture_on_dispatch`, which is gone.
-- Unpaid or backordered fulfillments no longer appear in ShipStation until they can ship.
+- The gem has no data migration of its own. Spree 6's migrations rename shipments to fulfillments, keeping their ids and numbers, and move the integration's password into `secret_preferences`, encrypted when Active Record encryption is configured.
+- **Run `bin/rake spree:upgrade` right after `db:migrate`, before ShipStation next polls.** Spree's upgrade tasks move 5.x shipment statuses to fulfillment statuses (`ready` and `pending` become `unfulfilled`, `shipped` becomes `fulfilled`), backfill the delivery-method providers the pickup rule reads, recompute orders' payment and fulfillment statuses, and carry settings such as `auto_capture_on_dispatch` over to the store's `capture_method`. Until then the export is empty, since no fulfillment is `unfulfilled` yet. Meanwhile a parcel still marked `shipped` is treated as fulfilled: a ship notice only records its tracking.
+- **ShipStation needs no changes** for the default store: same URL, same credentials, same `OrderNumber` for parcels it has already imported, same `ready` status.
+- New fulfillments are numbered like `R1001-F1`. A store other than the default must use `/shipstation/<integration id>` (see Step 2): 5.x picked the store from the request's host, and Spree 6 does not, so the bare URL serves only the default store.
+- Capture on dispatch now follows Spree 6's `capture_method` setting (on the store or the payment method). Spree's upgrade task carries `auto_capture_on_dispatch` over to the store's `capture_method`.
+- As before, unpaid or backordered fulfillments do not appear in ShipStation until they can ship: 5.x exported only `ready` shipments.
 - A ship notice for something Spree will not ship is answered with `400` and Spree's reason.
 - Spree 6 core sends no shipped email on its own, so subscribe to `fulfillment.fulfilled` if your store relied on the 5.x email (see [Telling the customer](#telling-the-customer)).
 

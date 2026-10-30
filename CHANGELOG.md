@@ -8,10 +8,19 @@ Spree 6 support. The major version tracks Spree's, so `spree-shipstation` 6.x
 supports Spree 6, and Spree 5 stays on the 5.0.x releases (the `5-0-stable`
 branch).
 
-**Nothing ShipStation or the merchant has configured has to change.** The
-`/shipstation` URL, the credentials, the XML, the `ready` status and the
-`OrderNumber` of every fulfillment ShipStation already holds stay as they were.
-See "Upgrading from 5.0" in the README.
+**Nothing ShipStation or the merchant has configured has to change** for the
+default store. The `/shipstation` URL, the credentials, the XML, the `ready`
+status and the `OrderNumber` of every fulfillment ShipStation already holds stay
+as they were. A store other than the default moves to its integration's URL
+(below).
+
+**Run `bin/rake spree:upgrade` right after `db:migrate`, before ShipStation next
+polls.** Spree's upgrade tasks move 5.x shipment statuses to fulfillment statuses
+(`ready` and `pending` become `unfulfilled`, `shipped` becomes `fulfilled`),
+backfill the delivery-method providers the pickup rule reads, recompute orders'
+payment and fulfillment statuses, and carry `auto_capture_on_dispatch` over to
+the store's `capture_method`. Until then the export is empty. See "Upgrading
+from 5.0" in the README.
 
 **Requirements:** Spree `~> 6.0`, Ruby 3.3 or newer, pagy 43.6 or newer. The 5.x
 releases do not install on Spree 6.
@@ -24,10 +33,12 @@ releases do not install on Spree 6.
   (order number, `-F`, position) for new ones. Totals stay order-level, as before.
 - **Only fulfillments Spree will let ship are exported**: placed, still
   unfulfilled, paid, with nothing backordered, and not a pickup. "Paid" means
-  paid, overcharged or partially refunded; or nothing owed; or authorized on a
-  store whose capture method is `on_dispatch` or `manual`. Unpaid or backordered
-  fulfillments no longer appear in ShipStation until they can ship. Results are
-  ordered by last update, oldest first.
+  paid, overcharged or partially refunded; or nothing owed; or, on a store whose
+  capture method is `on_dispatch` or `manual`, authorized, or partially paid with
+  the rest authorized (mixed tender, such as store credit plus a card). As before,
+  unpaid or backordered fulfillments do not appear in ShipStation until they can
+  ship: 5.x exported only `ready` shipments. Results are ordered by last update,
+  oldest first.
 - **Ship notices fulfil through Spree 6's fulfil workflow.** When Spree refuses
   (an unpaid order, backordered items, a canceled fulfillment) the notice is
   answered with `400` and Spree's reason, and nothing is recorded. It is never
@@ -37,7 +48,8 @@ releases do not install on Spree 6.
   not fulfil the parcel or publish the event again. A retry that names a tracking
   number already on another delivery of the same fulfillment is refused with
   `400` ("Tracking number has already been taken"). Concurrent retries are
-  serialized under the order's row lock.
+  serialized under the order's row lock. A parcel still marked `shipped` from 5.x,
+  before Spree's upgrade task renames the status, is treated the same way.
 - **A notice without an order number is refused** with `400`. New fulfillments
   store no number, so a blank one would otherwise match any of them.
 - **Capture on dispatch follows Spree 6's `capture_method`**, set on the store or
@@ -59,7 +71,8 @@ releases do not install on Spree 6.
   given 25.) A `page` that is not a number is read as page 1.
 - The integration appears in Spree 6's dashboard under the shipping group, with a
   description, logo and link to the README. Its form is generated from the
-  username and password preferences, and Spree stores the password encrypted.
+  username and password preferences. Spree 6's migrations move the password into
+  `secret_preferences`, encrypted when Active Record encryption is configured.
 - Both endpoints now run on a plain `ActionController::Base` controller, since
   Spree 6 removed the base controller and helper the 5.x one used.
 
@@ -70,6 +83,15 @@ releases do not install on Spree 6.
   id. Spree 6 no longer picks the store from the request's host, so a multi-store
   host points each store's ShipStation at its own integration's URL. The bare
   `/shipstation` path is unchanged and belongs to the default store.
+- **Ship notices are matched on ShipStation's `OrderID`** when the notice's XML
+  body carries it. A new fulfillment's number is its place in its order, so when
+  Spree deletes a parcel whose items were all moved out, the parcels after it
+  take new numbers; the `OrderID` (the fulfillment's id) does not change. A notice
+  whose `OrderID` belongs to another order is refused with `400` ("Shipment ...
+  does not match order id ..."), and one for a parcel Spree has deleted since
+  ShipStation imported it is refused with `400` instead of fulfilling the sibling
+  that now has its number; re-import the order from ShipStation. A notice without
+  an `OrderID` is matched on its number.
 - **The `carrier` ShipStation sends** is recorded on the delivery when it matches
   one of Spree's `tracking_carriers` (for example `UPS` or `Royal Mail`). Otherwise
   Spree detects the carrier from the tracking number.
@@ -78,8 +100,9 @@ releases do not install on Spree 6.
 
 ### Removed
 
-- **`auto_capture_on_dispatch`** and the gem's own payment-capture code. Use
-  Spree 6's `capture_method` instead.
+- The gem's own payment-capture code and its use of **`auto_capture_on_dispatch`**.
+  Spree 6's `capture_method` replaces that setting, and Spree's upgrade task
+  carries it over to the store's `capture_method`.
 - The `Spree::Shipment` decorator and its `exportable` and `between` scopes. The
   gem no longer patches core models; `Spree::Shipstation::ExportQuery` selects what
   is exported.

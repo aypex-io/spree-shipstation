@@ -5,7 +5,7 @@
 `spree-shipstation` connects a Spree store to ShipStation's **Custom Store** integration:
 
 - ShipStation **pulls** orders that are ready to ship from `GET /shipstation(.xml)`, an XML export.
-- When a label is created, ShipStation **posts** a ship notice to `POST /shipstation`. The gem records the tracking number and marks the parcel shipped in Spree, which emails the customer.
+- When a label is created, ShipStation **posts** a ship notice to `POST /shipstation`. The gem records the tracking number and marks the parcel shipped in Spree.
 
 Both endpoints authenticate with HTTP Basic, using credentials held on a per-store `Spree::Integrations::Shipstation` record.
 
@@ -32,8 +32,8 @@ The API mapping this design relies on, with file:line evidence from Spree 6.0.1 
    - `OrderID`/`OrderNumber` for a parcel exported under 5.x unchanged.
 3. Export exactly the parcels Spree will let the warehouse ship: placed orders, unfulfilled, paid, nothing backordered, and not collected in person.
 4. A ship notice either fulfils the parcel or answers ShipStation with a 4xx and the reason. It never answers 200 for a parcel Spree didn't ship.
-5. Retry-safe ship notices: ShipStation retries, and a retry for an already-shipped parcel succeeds without shipping or emailing twice.
-6. Same CI quality bar as the other Aypex gems:
+5. Retry-safe ship notices: ShipStation retries, and a retry for an already-shipped parcel succeeds without shipping it or publishing `fulfillment.fulfilled` twice.
+6. Same CI quality bar as this org's other gems:
    - a matrix of Spree 6.0.0 and the newest release, each on Ruby 3.3 and 4.0, run weekly;
    - StandardRB, Brakeman and bundler-audit kept;
    - a trusted-publishing release that survives `rubygems/release-gem`'s preload (the fix from `spree-paypal_merchant`).
@@ -108,6 +108,7 @@ A query object, `Spree::Shipstation::ExportQuery.new(store:, from:, to:)`, repla
   - `payment_status` is `paid`, `overcharged` or `partially_refunded`;
   - `total = 0` (a free order has `payment_status = 'none'`, and Spree still ships it);
   - `payment_status` is `authorized` and the store's capture method is `on_dispatch` or `manual`. On those stores Spree captures at dispatch, as 5.x's `auto_capture_on_dispatch` did.
+  - `payment_status` is `partially_paid` on those same stores: mixed tender, part captured at checkout and the rest authorized. Spree's fulfil check lets it through when every pending payment defers capture.
 - none of its items is backordered (`id NOT IN` the backordered fulfillment items);
 - its delivery method is not pickup or pickup point. Those parcels are collected, not shipped, and have no ship address. Digital fulfillments are already fulfilled at placement.
 - **Date window:** when `start_date`/`end_date` are given, the parcel's `updated_at` *or* its order's `updated_at` falls in the window, as today. The order table is already joined.
@@ -116,7 +117,7 @@ A query object, `Spree::Shipstation::ExportQuery.new(store:, from:, to:)`, repla
 
 `partially_refunded` is included because a partial refund before shipping (one line refunded) still leaves the rest to ship. Leaving it out would silently strand the parcel. If the order is in fact not paid enough, the ship notice is refused with Spree's reason (§4), which the warehouse sees.
 
-**Pagination:** `pagy(query, limit: 50, page:)`. The README's 50 per page becomes true.
+**Pagination:** `pagy(query, limit: 50)`, with pagy reading `page` from the params itself. The README's 50 per page becomes true.
 
 ### 3. The export XML
 
@@ -149,14 +150,16 @@ The XML must still validate against the bundled XSD, and the specs keep that che
 2. Otherwise parse `\A(?<order>.+)-F(?<position>\d+)\z`. Find the store's order by number, then pick the fulfillment whose derived `number` equals the given string. The match uses Spree's own derivation rather than re-implementing the position arithmetic.
 3. If neither finds it, raise `ShipmentNotFoundError` and answer 400, as today.
 
+When the notice's XML body carries `OrderID` (the fulfillment's id, as exported), it is authoritative: a derived number shifts when Spree destroys an earlier parcel, the id does not. The number then only identifies the order; an id outside the store is `ShipmentNotFoundError`, never a fallback to the number, and an id from another order is `ShipmentMismatchError` (400).
+
 **Apply**, under `order.with_lock`. This is the pattern Spree 6's admin API uses, and it serializes ShipStation retries.
 
 - **Blank tracking:** `MissingTrackingNumberError`, 400 (as today).
-- **Already fulfilled or delivered:** `Spree.delivery_upsert_primary_service.call(fulfillment:, tracking:)`. This records or corrects the tracking without fulfilling or emailing again, then answers 200. This makes retries and re-labels safe.
+- **Already fulfilled or delivered:** `Spree.delivery_upsert_primary_service.call(fulfillment:, tracking:)`. This records or corrects the tracking without fulfilling it or publishing `fulfillment.fulfilled` again, then answers 200. This makes retries and re-labels safe.
 - **Canceled:** `FulfillmentCanceledError`, 400. It is checked before the workflow, which would otherwise say "cannot be fulfilled", the same text as for already-fulfilled.
 - **Otherwise**, call `Spree.fulfillment_fulfill_workflow`:
   - with `fulfillment:`, `tracking:`, and `tracking_carrier:` when ShipStation's `carrier` maps to a key in `Spree.tracking_carriers` (otherwise Spree detects the carrier from the number);
-  - with `notify_customer: true`, so the customer gets the shipped email as in 5.x;
+  - with `notify_customer: true`. The workflow publishes `fulfillment.fulfilled` with that flag, and the host app's subscriber decides whether to tell the customer; Spree 6 core sends no shipped email itself;
   - never with `force:`, and never with `items:`. A partial list would split the parcel and ship a new fulfillment with a different number.
   - **On failure**, raise `FulfillmentRefusedError` carrying Spree's message ("This order is not paid for yet", "…backordered units…") and answer 400.
 - **`Spree::Core::GatewayError`**, from an on-dispatch capture decline, becomes `PaymentError` and a 400. On a decline the whole lock transaction rolls back, so nothing persists; the retry, or the merchant's fix, fulfils it.
@@ -227,10 +230,11 @@ This goes in the README's "Upgrading from 5.0" section:
 
 - Bump the gem to `~> 6.0` alongside the Spree 6 upgrade.
 - There is no data migration of the gem's own. Spree 6's migrations rename shipments to fulfillments, keeping their ids and numbers, and move the password into `secret_preferences`.
-- ShipStation needs no changes: same URL, same credentials, same `OrderNumber` for parcels already imported, same `ready` status.
-- New parcels are numbered `R1001-F1`. A multi-store host can switch a store's ShipStation URL to `/shipstation/<integration id>`.
-- Capture on dispatch now follows Spree 6's `capture_method` setting (store or payment method), not `auto_capture_on_dispatch`.
-- Unpaid or backordered parcels no longer appear in ShipStation until they can ship.
+- Run `bin/rake spree:upgrade` right after `db:migrate`, before ShipStation next polls: until Spree's upgrade tasks move 5.x statuses (`ready`/`pending` to `unfulfilled`, `shipped` to `fulfilled`), the export is empty.
+- ShipStation needs no changes for the default store: same URL, same credentials, same `OrderNumber` for parcels already imported, same `ready` status.
+- New parcels are numbered `R1001-F1`. A store other than the default must use `/shipstation/<integration id>`, since Spree 6 no longer picks the store from the host.
+- Capture on dispatch now follows Spree 6's `capture_method` setting (store or payment method); Spree's upgrade task carries `auto_capture_on_dispatch` over to it.
+- As before, unpaid or backordered parcels do not appear in ShipStation until they can ship (5.x exported only `ready` shipments).
 
 ## Left to the builder
 
