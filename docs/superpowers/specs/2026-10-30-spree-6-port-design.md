@@ -159,7 +159,7 @@ The XML must still validate against the bundled XSD, and the specs keep that che
   - with `notify_customer: true`, so the customer gets the shipped email as in 5.x;
   - never with `force:`, and never with `items:`. A partial list would split the parcel and ship a new fulfillment with a different number.
   - **On failure**, raise `FulfillmentRefusedError` carrying Spree's message ("This order is not paid for yet", "…backordered units…") and answer 400.
-- **`Spree::Core::GatewayError`**, from an on-dispatch capture decline, becomes `PaymentError` and a 400. Spree has already written the tracking by then. That is core's behaviour and is harmless: the retry, or the merchant's fix, fulfils it.
+- **`Spree::Core::GatewayError`**, from an on-dispatch capture decline, becomes `PaymentError` and a 400. On a decline the whole lock transaction rolls back, so nothing persists; the retry, or the merchant's fix, fulfils it.
 
 The gem's own `capture_pending_payments!` and `Spree::Config.auto_capture_on_dispatch` go. Spree 6 captures on dispatch inside the workflow, configured by the store's or payment method's `capture_method`.
 

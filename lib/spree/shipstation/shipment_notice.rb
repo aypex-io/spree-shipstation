@@ -10,8 +10,8 @@ module Spree
     # the order's row lock (which serializes ShipStation's retries):
     #
     # * a fulfillment that is already fulfilled or delivered only has its
-    #   tracking recorded, so a retry or a re-label neither ships nor emails
-    #   again;
+    #   tracking recorded, so a retry or a re-label does not fulfil it or
+    #   publish the event again;
     # * a canceled one is refused;
     # * any other goes through Spree's fulfil workflow, which checks the order is
     #   paid and in stock, records the tracking and carrier, captures payments

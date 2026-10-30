@@ -3,7 +3,8 @@
 module Spree
   module Shipstation
     ##
-    # Rails engine that loads this extension's decorator files.
+    # Rails engine for the ShipStation integration. It makes the gem's +app+ and
+    # +config+ directories part of the host application.
     #
     class Engine < ::Rails::Engine
       require "spree/core"
@@ -17,15 +18,6 @@ module Spree
       config.generators do |g|
         g.test_framework :rspec
       end
-
-      def self.activate
-        # Three levels up from lib/spree/shipstation/ to reach the gem root.
-        Dir.glob(File.join(File.dirname(__FILE__), "../../../app/**/*_decorator*.rb")).sort.each do |c|
-          Rails.configuration.cache_classes ? require(c) : load(c)
-        end
-      end
-
-      config.to_prepare(&method(:activate).to_proc)
     end
   end
 end
