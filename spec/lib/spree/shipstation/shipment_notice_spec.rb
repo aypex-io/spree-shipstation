@@ -168,6 +168,33 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
       end
     end
 
+    # Spree 6.1 drops the column. A test cannot drop it, so the model reports
+    # it gone, which is what the guard reads.
+    context "when Spree has dropped the stored number column" do
+      before do
+        columns = Spree::Fulfillment.column_names - ["number"]
+        allow(Spree::Fulfillment).to receive(:column_names).and_return(columns)
+      end
+
+      def queries_during
+        statements = []
+        collect = ->(*, payload) { statements << payload[:sql] }
+        ActiveSupport::Notifications.subscribed(collect, "sql.active_record") { yield }
+        statements
+      end
+
+      it("does not look the number up in the column") do
+        order = paid_order
+        statements = queries_during { notice("#{order.number}-F1").apply }
+        expect(statements.grep(/"spree_fulfillments"\."number"/)).to be_empty
+      end
+
+      it("still finds a parcel by its derived number") do
+        order = paid_order
+        expect(notice("#{order.number}-F1").apply).to eq(parcel_of(order))
+      end
+    end
+
     context "when the notice carries ShipStation's OrderID" do
       it("finds the parcel the OrderID names") do
         order = paid_order
@@ -369,6 +396,31 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
         Spree.delivery_create_service.call(owner: parcel_of(order), tracking_number: "B2")
         expect { notice(number, tracking: "B2").apply }
           .to raise_error(Spree::Shipstation::FulfillmentRefusedError, "Tracking number has already been taken")
+      end
+    end
+
+    # "shipped" is a 5.x status, left on a parcel until Spree's upgrade task
+    # renames it "fulfilled". No model API writes it any more, so it is written
+    # to the column, as the upgrade finds it.
+    context "when the parcel still carries the 5.x shipped status" do
+      let(:order) { paid_order }
+      let(:number) { parcel_of(order).number }
+
+      before { parcel_of(order).update_column(:status, "shipped") }
+
+      it("records the tracking number") do
+        notice(number, tracking: "B2").apply
+        expect(parcel_of(order).reload.tracking).to eq("B2")
+      end
+
+      it("does not publish a fulfilled event") do
+        events = fulfilled_events { notice(number, tracking: "B2").apply }
+        expect(events).to be_empty
+      end
+
+      it("leaves the status for Spree's upgrade task") do
+        notice(number, tracking: "B2").apply
+        expect(parcel_of(order).reload.status).to eq("shipped")
       end
     end
 

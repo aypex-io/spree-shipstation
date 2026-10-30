@@ -103,9 +103,13 @@ module Spree
       Spree::Current.store = @integration.store
     end
 
+    # Only the path names an integration. A query-string +integration_id+ on the
+    # bare URL is ignored, so that URL always belongs to the default store.
     def resolve_integration
-      if params[:integration_id].present?
-        Spree::Integrations::Shipstation.active.find_by_prefix_id(params[:integration_id])
+      integration_id = request.path_parameters[:integration_id]
+
+      if integration_id.present?
+        Spree::Integrations::Shipstation.active.find_by_prefix_id(integration_id)
       else
         current_store.integrations.active.find_by(type: Spree::Integrations::Shipstation.sti_name)
       end

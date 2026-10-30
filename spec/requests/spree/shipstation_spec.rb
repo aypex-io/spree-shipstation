@@ -401,6 +401,13 @@ RSpec.describe("ShipStation endpoints", type: :request) do
         expect(response).to have_http_status(:unauthorized)
       end
 
+      # Only the path names an integration, so the bare URL stays the default
+      # store's whatever the query string says.
+      it("ignores an integration id in the bare URL's query string") do
+        get "/shipstation.xml", params: {integration_id: other_integration.prefixed_id}, headers: credentials(other_integration)
+        expect(response).to have_http_status(:unauthorized)
+      end
+
       it("ships the other store's parcel on its integration's URL") do
         parcel = parcel_of(other_order)
         ship_notice(other_path, number: parcel.number, headers: credentials(other_integration))

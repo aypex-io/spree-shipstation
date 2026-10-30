@@ -21,9 +21,9 @@ module Spree
     #
     # Then, under the order's row lock (which serializes ShipStation's retries):
     #
-    # * a fulfillment that is already fulfilled or delivered only has its
-    #   tracking recorded, so a retry or a re-label does not fulfil it or
-    #   publish the event again;
+    # * a fulfillment that is already fulfilled or delivered (or still carries
+    #   the 5.x +shipped+ status) only has its tracking recorded, so a retry or
+    #   a re-label does not fulfil it or publish the event again;
     # * a canceled one is refused;
     # * any other goes through Spree's fulfil workflow, which checks the order is
     #   paid and in stock, records the tracking and carrier, captures payments
@@ -146,8 +146,12 @@ module Spree
         fulfillment
       end
 
-      # Parcels created before Spree 6 keep the number stored on them.
+      # Parcels created before Spree 6 keep the number stored on them. Spree
+      # keeps the column only as legacy data, to be dropped in 6.1, which this
+      # gem's +~> 6.0+ admits; once it is gone, numbers are only derived.
       def find_by_stored_number
+        return unless ::Spree::Fulfillment.column_names.include?("number")
+
         store.fulfillments.find_by(number: shipment_number)
       end
 
@@ -165,13 +169,19 @@ module Spree
       end
 
       def apply_to(fulfillment)
-        if fulfillment.fulfilled_or_delivered?
+        if already_shipped?(fulfillment)
           record_tracking(fulfillment)
         elsif fulfillment.canceled?
           raise FulfillmentCanceledError, fulfillment.number
         else
           fulfil(fulfillment)
         end
+      end
+
+      # "shipped" is a 5.x status, left on a parcel until Spree's upgrade task
+      # (+spree:upgrade+) renames it "fulfilled". Such a parcel has gone out.
+      def already_shipped?(fulfillment)
+        fulfillment.fulfilled_or_delivered? || fulfillment.status == "shipped"
       end
 
       def record_tracking(fulfillment)
