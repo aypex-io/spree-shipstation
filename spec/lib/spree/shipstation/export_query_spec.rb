@@ -365,6 +365,12 @@ RSpec.describe(Spree::Shipstation::ExportQuery) do
       expect(count_queries { read_everything(parcels) }).to eq(0)
     end
 
+    it("loads the selected delivery method up front") do
+      paid_order(variants: [variant])
+      parcels = exported.to_a
+      expect(count_queries { parcels.each { |parcel| parcel.delivery_method.name } }).to eq(0)
+    end
+
     it("loads the order's other parcels so each number costs no query") do
       order = paid_order
       create(:fulfillment, order: order, tracking: nil)

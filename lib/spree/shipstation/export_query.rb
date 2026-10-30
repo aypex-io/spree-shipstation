@@ -21,6 +21,10 @@ module Spree
     # * none of its items is backordered;
     # * its selected delivery method is not a pickup or a pickup point.
     #
+    # One exception: a partially refunded order is exported, but Spree's fulfil
+    # check compares the net captured amount (net of refunds), so the ship notice
+    # may still be refused, with Spree's reason.
+    #
     # @example
     #   Spree::Shipstation::ExportQuery.new(store: store, from: 1.day.ago).call
     #
@@ -30,6 +34,7 @@ module Spree
 
       PRELOADS = {
         order: [:bill_address, :ship_address, :fulfillments],
+        selected_delivery_rate: :delivery_method,
         fulfillment_items: {
           line_item: {
             variant: [{product: :primary_media}, :primary_media, {option_values: :option_type}]
@@ -74,8 +79,8 @@ module Spree
           .unfulfilled
           .merge(Spree::Order.placed_orders)
           .merge(paid_orders)
-          .where.not(id: backordered)
-          .where.not(id: picked_up)
+          .where.not(id: backordered_fulfillment_ids)
+          .where.not(id: pickup_fulfillment_ids)
       end
 
       # A free order's payment status stays +none+, but Spree ships it.
@@ -92,14 +97,14 @@ module Spree
 
       # The +fulfillment_id IS NOT NULL+ guards matter: a single NULL in a +NOT IN+
       # list makes the comparison unknown for every row, which would export nothing.
-      def backordered
+      def backordered_fulfillment_ids
         Spree::FulfillmentItem.backordered.where.not(fulfillment_id: nil).select(:fulfillment_id)
       end
 
       # Only the delivery method the customer chose counts. A parcel may carry a
       # pickup rate among the options it was offered. Methods are read with
       # deleted ones, since orders outlive the method they were placed with.
-      def picked_up
+      def pickup_fulfillment_ids
         pickups = Spree::DeliveryMethod.with_deleted.with_provider(:pickup?)
           .or(Spree::DeliveryMethod.with_deleted.with_provider(:pickup_point?))
 
