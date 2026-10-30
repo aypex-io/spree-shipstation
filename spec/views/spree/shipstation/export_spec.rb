@@ -15,8 +15,16 @@ RSpec.describe("spree/shipstation/export.xml.builder", type: :view) do
     document.at_xpath(path)&.text
   end
 
+  # The name of the delivery method the parcel's selected rate points at, read
+  # from the rates rather than through the fulfillment, as the export reads it.
+  def selected_delivery_method_name
+    Spree::DeliveryRate.find_by!(fulfillment_id: fulfillment.id, selected: true).delivery_method.name
+  end
+
+  # Places the order, after any media an example adds, and renders its export.
+  # The factory's parcel already has a standard delivery method selected.
   def render_export
-    fulfillment.add_delivery_method(create(:delivery_method), true)
+    order
     assign(:fulfillments, Spree::Shipstation::ExportQuery.new(store: store).call)
     assign(:pagy, Pagy::Offset.new(count: 1, page: 1, limit: 50))
     render template: "spree/shipstation/export", formats: [:xml]
@@ -46,7 +54,7 @@ RSpec.describe("spree/shipstation/export.xml.builder", type: :view) do
     end
 
     it("exports the selected delivery method as the ShippingMethod") do
-      expect(text_at("//Order/ShippingMethod")).to eq(fulfillment.delivery_method.name)
+      expect(text_at("//Order/ShippingMethod")).to eq(selected_delivery_method_name)
     end
 
     it("exports the order's delivery total as the ShippingAmount") do

@@ -5,9 +5,8 @@ require "spec_helper"
 RSpec.describe(Spree::Shipstation::Export::OrderPresenter) do
   let!(:store) { create(:store, default: true) }
   let(:order) { create(:order_ready_to_ship, store: store) }
-  let(:fulfillment) do
-    order.fulfillments.first.tap { |parcel| parcel.add_delivery_method(create(:delivery_method), true) }
-  end
+  # The factory's parcel already has a standard delivery method selected.
+  let(:fulfillment) { order.fulfillments.first }
 
   subject(:presenter) { described_class.new(fulfillment) }
 
@@ -42,8 +41,11 @@ RSpec.describe(Spree::Shipstation::Export::OrderPresenter) do
   end
 
   describe "#shipping_method_name" do
+    # Read from the rates rather than through the fulfillment, as the presenter
+    # reads it.
     it("names the selected delivery method") do
-      expect(presenter.shipping_method_name).to eq(fulfillment.delivery_method.name)
+      selected = Spree::DeliveryRate.find_by!(fulfillment_id: fulfillment.id, selected: true)
+      expect(presenter.shipping_method_name).to eq(selected.delivery_method.name)
     end
 
     it("is nil when the fulfillment has no delivery method") do

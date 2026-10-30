@@ -1,15 +1,17 @@
 # frozen_string_literal: true
 
 RSpec.describe(Spree::Shipstation::ExportQuery) do
-  let(:store) { create(:store) }
+  # The default store, as on a single-store install, created before anything
+  # else: the factory's products and delivery method then belong to it, so the
+  # rates the factory refreshes for its orders include that method.
+  let!(:store) { create(:store, default: true) }
 
   # A placed order, paid in full, whose only parcel is unfulfilled and sits in
-  # stock. The parcel is shipped by a standard (non-pickup) delivery method.
-  # Pass factory attributes to turn it into any other kind of order.
+  # stock. The factory gives the parcel one selected rate, for a standard
+  # (non-pickup) delivery method. Pass factory attributes to turn it into any
+  # other kind of order.
   def paid_order(store: self.store, **attributes)
-    create(:order_ready_to_ship, store: store, **attributes).tap do |order|
-      parcel_of(order).add_delivery_method(create(:delivery_method), true)
-    end
+    create(:order_ready_to_ship, store: store, **attributes)
   end
 
   def parcel_of(order)
@@ -83,6 +85,13 @@ RSpec.describe(Spree::Shipstation::ExportQuery) do
   describe "#call" do
     it("returns a relation of fulfillments") do
       expect(exported).to be_a(ActiveRecord::Relation)
+    end
+
+    # What the pickup examples rest on: Spree's own rate refresh selected one
+    # standard delivery method for the factory's parcel.
+    it("builds on parcels with one selected standard rate") do
+      selected = Spree::DeliveryRate.where(fulfillment_id: parcel_of(paid_order).id, selected: true)
+      expect(selected.map { |rate| rate.delivery_method.name }).to match([a_string_starting_with("UPS Ground")])
     end
 
     context "when the order is placed, paid and unfulfilled" do
