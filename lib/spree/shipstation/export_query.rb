@@ -15,15 +15,21 @@ module Spree
     # * it is one of the store's fulfillments and is still +unfulfilled+;
     # * its order is placed, which leaves out drafts and canceled orders;
     # * its order is paid: +paid+, +overcharged+ or +partially_refunded+, or it
-    #   owes nothing (+total = 0+, whose payment status stays +none+), or it is
-    #   +authorized+ on a store that captures on dispatch or manually (a payment
-    #   method that overrides the store's setting is not consulted);
+    #   owes nothing (+total = 0+, whose payment status stays +none+), or, on a
+    #   store that captures on dispatch or manually, it is +authorized+ or
+    #   +partially_paid+ (mixed tender: store credit captured at checkout, say,
+    #   and a card authorized for the rest). A payment method that overrides
+    #   the store's setting is not consulted;
     # * none of its items is backordered;
     # * its selected delivery method is not a pickup or a pickup point.
     #
-    # One exception: a partially refunded order is exported, but Spree's fulfil
-    # check compares the net captured amount (net of refunds), so the ship notice
-    # may still be refused, with Spree's reason.
+    # These are most of Spree's fulfil checks, not all of them, so the ship
+    # notice may still be refused, with Spree's reason. Spree also checks, when
+    # the parcel is fulfilled, that the stock location has the units on hand,
+    # and it compares the net captured amount (net of refunds) with what was
+    # due: a partially refunded order is exported but may fall short, and a
+    # partially paid one ships only while the rest is authorized on payment
+    # methods that defer capture.
     #
     # @example
     #   Spree::Shipstation::ExportQuery.new(store: store, from: 1.day.ago).call
@@ -31,6 +37,10 @@ module Spree
     class ExportQuery
       PAID_STATUSES = %w[paid overcharged partially_refunded].freeze
       private_constant :PAID_STATUSES
+
+      # Shippable as well when the store captures on dispatch or manually.
+      DEFERRED_CAPTURE_STATUSES = %w[authorized partially_paid].freeze
+      private_constant :DEFERRED_CAPTURE_STATUSES
 
       PRELOADS = {
         order: [:bill_address, :ship_address, :fulfillments],
@@ -88,11 +98,12 @@ module Spree
         Spree::Order.where(payment_status: paid_statuses).or(Spree::Order.where(total: 0))
       end
 
-      # An authorized order can ship when the store charges it at dispatch or
-      # leaves it to staff. On a store that captures at checkout, authorized money
-      # is not yet paid.
+      # An order that is authorized, in full or for the part not captured at
+      # checkout, can ship when the store charges it at dispatch or leaves it to
+      # staff: Spree lets it through when every pending payment defers capture.
+      # On a store that captures at checkout, authorized money is not yet paid.
       def paid_statuses
-        store.capture_at_checkout? ? PAID_STATUSES : PAID_STATUSES + ["authorized"]
+        store.capture_at_checkout? ? PAID_STATUSES : PAID_STATUSES + DEFERRED_CAPTURE_STATUSES
       end
 
       # The +fulfillment_id IS NOT NULL+ guards matter: a single NULL in a +NOT IN+

@@ -37,6 +37,20 @@ RSpec.describe(Spree::Shipstation::ExportQuery) do
     end
   end
 
+  # Mixed tender: part of the total captured at checkout (store credit, say) and
+  # the rest authorized on a card, recomputed the same way. Spree derives
+  # "partially_paid". The captured amount is also written to payment_total, as
+  # the factory does for a paid order, since the payment events that keep it in
+  # step are off in tests.
+  def partially_paid_order
+    unpaid_order.tap do |order|
+      create(:payment, order: order, amount: 5, status: "completed")
+      create(:payment, order: order, amount: order.total - 5, status: "pending")
+      order.update_column(:payment_total, 5)
+      order.update_statuses!
+    end
+  end
+
   # A completed payment with part of it refunded, recomputed the same way.
   def partially_refunded_order
     paid_order.tap do |order|
@@ -129,6 +143,36 @@ RSpec.describe(Spree::Shipstation::ExportQuery) do
         it("excludes the parcel") do
           store.update!(preferred_capture_method: "checkout")
           order = authorized_order
+          expect(exported).not_to include(parcel_of(order))
+        end
+      end
+    end
+
+    context "when part is captured and the rest only authorized" do
+      it("is partially paid") do
+        expect(partially_paid_order.payment_status).to eq("partially_paid")
+      end
+
+      context "when the store captures on dispatch" do
+        it("includes the parcel") do
+          store.update!(preferred_capture_method: "on_dispatch")
+          order = partially_paid_order
+          expect(exported).to eq([parcel_of(order)])
+        end
+      end
+
+      context "when the store leaves capture to staff" do
+        it("includes the parcel") do
+          store.update!(preferred_capture_method: "manual")
+          order = partially_paid_order
+          expect(exported).to eq([parcel_of(order)])
+        end
+      end
+
+      context "when the store captures at checkout" do
+        it("excludes the parcel") do
+          store.update!(preferred_capture_method: "checkout")
+          order = partially_paid_order
           expect(exported).not_to include(parcel_of(order))
         end
       end

@@ -30,6 +30,18 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
     end
   end
 
+  # Mixed tender: part captured at checkout and the rest authorized, so Spree
+  # derives "partially_paid". The captured part is written to payment_total too,
+  # as the factory does for a paid order, since payment events are off in tests.
+  def partially_paid_order
+    unpaid_order.tap do |order|
+      create(:payment, order: order, amount: 5, status: "completed")
+      create(:payment, order: order, amount: order.total - 5, status: "pending")
+      order.update_column(:payment_total, 5)
+      order.update_statuses!
+    end
+  end
+
   # Ships the parcel through Spree itself, the way a merchant would.
   def fulfill(parcel, tracking:)
     Spree.fulfillment_fulfill_workflow.call(fulfillment: parcel, tracking: tracking)
@@ -403,6 +415,12 @@ RSpec.describe(Spree::Shipstation::ShipmentNotice) do
         order = authorized_order
         notice(parcel_of(order).number).apply
         expect(order.payments.first.reload).to be_completed
+      end
+
+      it("fulfils a parcel paid partly at checkout and partly on dispatch") do
+        order = partially_paid_order
+        notice(parcel_of(order).number).apply
+        expect(parcel_of(order).reload).to be_fulfilled
       end
 
       context "when the gateway declines the capture" do
