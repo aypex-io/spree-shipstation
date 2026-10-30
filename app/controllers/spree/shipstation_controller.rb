@@ -2,29 +2,47 @@
 
 module Spree
   ##
-  # HTTP endpoints ShipStation polls for ready shipments and posts ship notices to.
+  # HTTP endpoints ShipStation polls for ready parcels and posts ship notices to.
+  #
+  # Every request is answered for one ShipStation integration, and so for one
+  # store. The bare +/shipstation+ path uses the default store's integration;
+  # +/shipstation/:integration_id+ uses the integration with that prefixed id.
+  # Requests are authenticated with HTTP Basic against the integration's own
+  # credentials, after the integration is found: with no active integration the
+  # answer is 404, whoever asks.
+  #
+  # This is an +ActionController::Base+ rather than an API controller because
+  # the export is a Builder template, which +ActionController::API+ renders as
+  # an empty body.
   #
   class ShipstationController < ActionController::Base
+    include Spree::Core::ControllerHelpers::Store
     include Pagy::Method
 
-    protect_from_forgery with: :null_session, only: :shipnotify
+    PER_PAGE = 50
+    private_constant :PER_PAGE
 
-    before_action :ensure_active_integration
+    # Forgery protection is the default for this controller, so an action added
+    # later is protected until it says otherwise. ShipStation's two actions opt
+    # out: HTTP Basic is their authentication and there is no session to forge.
+    protect_from_forgery with: :exception
+    skip_forgery_protection only: %i[export shipnotify]
+
+    before_action :find_integration
     before_action :authenticate_shipstation
 
     ##
-    # XML export of ready shipments for ShipStation to pull.
+    # XML export of the store's ready parcels for ShipStation to pull.
     #
     # @return [void]
     #
     def export
-      @pagy, @shipments = pagy(
-        current_store.shipments
-          .exportable
-          .between(date_param(:start_date), date_param(:end_date)),
-        page: params[:page],
-        items: 50
+      query = Shipstation::ExportQuery.new(
+        store: @integration.store,
+        from: date_param(:start_date),
+        to: date_param(:end_date)
       )
+      @pagy, @fulfillments = pagy(query.call, limit: PER_PAGE)
 
       respond_to do |format|
         format.xml { render layout: false }
@@ -32,12 +50,16 @@ module Spree
     end
 
     ##
-    # Applies a ship notification from ShipStation and marks the shipment shipped.
+    # Applies a ship notice from ShipStation and fulfils the parcel. The notice
+    # travels in the query string; the XML body ShipStation also sends is not read.
     #
     # @return [void]
     #
     def shipnotify
-      Shipstation::ShipmentNotice.from_payload(params.permit(:order_number, :tracking_number).to_h, store: current_store).apply
+      Shipstation::ShipmentNotice.from_payload(
+        params.permit(:order_number, :tracking_number, :carrier).to_h,
+        store: @integration.store
+      ).apply
       head :ok
     rescue Shipstation::Error => e
       Rails.logger.error("ShipStation Notification Error: #{e.message}")
@@ -46,10 +68,25 @@ module Spree
 
     private
 
-    def ensure_active_integration
-      head :not_found unless store_integration("shipstation")&.active?
+    # Finds the active integration this request is for and makes its store the
+    # current one. Anything else is a 404, before the caller is asked who they are.
+    def find_integration
+      @integration = integration_scope
+      return head :not_found unless @integration
+
+      Spree::Current.store = @integration.store
     end
 
+    def integration_scope
+      if params[:integration_id].present?
+        Spree::Integrations::Shipstation.active.find_by_prefix_id(params[:integration_id])
+      else
+        current_store.integrations.active.find_by(type: Spree::Integrations::Shipstation.sti_name)
+      end
+    end
+
+    # ShipStation sends dates as +MM/DD/YYYY HH:MM+ in UTC. One it cannot read
+    # is dropped, which widens the window rather than failing the pull.
     def date_param(name)
       return if params[name].blank?
 
@@ -60,9 +97,10 @@ module Spree
 
     def authenticate_shipstation
       authenticate_or_request_with_http_basic do |username, password|
-        integration = store_integration("shipstation")
-        ActiveSupport::SecurityUtils.secure_compare(username.to_s, integration.preferred_username.to_s) &&
-          ActiveSupport::SecurityUtils.secure_compare(password.to_s, integration.preferred_password.to_s)
+        # A non-short-circuiting & so both fields are always compared, and the
+        # time taken does not reveal whether the username matched.
+        ActiveSupport::SecurityUtils.secure_compare(username.to_s, @integration.preferred_username.to_s) &
+          ActiveSupport::SecurityUtils.secure_compare(password.to_s, @integration.preferred_password.to_s)
       end
     end
   end

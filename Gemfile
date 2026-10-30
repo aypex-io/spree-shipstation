@@ -5,7 +5,6 @@ source "https://rubygems.org"
 gem "benchmark"
 gem "brakeman", require: false
 gem "bundler-audit", require: false
-gem "rails-controller-testing"
 gem "rspec-xsd"
 # Constrained here, not only in the gemspec: under Bundler 2 an unconstrained
 # entry in the Gemfile overrides the gemspec and resolves 0.6.3, which cannot
