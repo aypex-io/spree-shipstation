@@ -209,12 +209,17 @@ Specs:
 - One test job: a matrix of `spree: ['6.0.0', '']` × `ruby: ['3.3', '4.0']`, on sqlite as today, plus a weekly schedule.
 - A `Tests` summary job is added so branch protection can require one stable name.
 - StandardRB, Brakeman and bundler-audit stay.
-- **Branch protection** today requires the three `sqlite (3.4, spree_5_x)` jobs, which will never report again. The user updates the required checks to `Tests`, `standard`, `brakeman` and `bundler-audit` before the PR can merge.
+- **Branch protection** on `main` today requires the three `sqlite (3.4, spree_5_x)` jobs, which will never report again. `6-0-stable` has no protection. Before the PR can merge, the user requires `Tests`, `standard`, `brakeman` and `bundler-audit` on both branches.
 
 **Release:**
 
 - `release.yml` gains the step from `spree-paypal_merchant` that installs, system-wide, the locked versions of the gems `rubygems/release-gem` preloads (zlib, openssl).
-- **The 5.x line:** cut `5-0-stable` from `main` before merging (pushed with the user's approval), for Spree 5 fixes.
+
+**Branches** (the user's decision):
+
+- `5-0-stable` holds the 5.x line. It already existed and was fast-forwarded to `main`, so it includes 5.0.1.
+- `6-0-stable` was created from `main`. The port's PR targets `6-0-stable`, and `v6.0.0` is tagged there.
+- After the release, `main` is fast-forwarded to `6-0-stable`, so `main` always holds the newest line.
 
 ### 7. Upgrading an existing store
 
