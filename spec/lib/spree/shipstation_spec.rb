@@ -6,8 +6,8 @@ RSpec.describe(Spree::Shipstation) do
   describe "VERSION" do
     it("is defined") { expect(Spree::Shipstation::VERSION).to be_present }
 
-    it("is version 6.0.0") do
-      expect(Spree::Shipstation::VERSION).to eq("6.0.0")
+    it("is version 6.0.1") do
+      expect(Spree::Shipstation::VERSION).to eq("6.0.1")
     end
   end
 

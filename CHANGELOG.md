@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.1
+
+### Fixed
+
+- The export no longer fails with a 500 (`undefined method 'attachment_path'`)
+  for an order whose items have an image.
+- `ImageUrl` is now an absolute URL on the host ShipStation polls, so ShipStation
+  can fetch item images (#21).
+
 ## 6.0.0
 
 Spree 6 support. The major version tracks Spree's, so `spree-shipstation` 6.x
