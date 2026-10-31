@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This gem targets **Spree 6.0** (`spree ~> 6.0`, Ruby >= 3.3). Its major version tracks Spree's. The Spree 5 line lives on the `5-0-stable` branch (5.0.x); `main` tracks the newest line.
 
-This is a **public repo**: README, CHANGELOG, this file, code comments and commit messages carry generic information only. Use example values (`R1001-F1`, `int_abc123`, `shop.example.com`), never real stores, customers, hosts or prices.
+This is a **public repo**: README, `docs/`, CHANGELOG, this file, code comments and commit messages carry generic information only. Use example values (`R1001-F1`, `int_abc123`, `shop.example.com`), never real stores, customers, hosts or prices.
 
 ### Naming
 
@@ -66,7 +66,7 @@ expectation per example.
 
 - The class name stays `Spree::Integrations::Shipstation`: existing rows store it as their STI type.
 - Validation messages resolve with `I18n.t` at validation time (a lambda), never `Spree.t` at class load, which is deprecated and raises under Spree 6's test config.
-- The dashboard lists the integration through class methods: `integration_group` (`"shipping"`), `integration_name` and the description from I18n, `logo_url` (a `data:` URI built from the bundled logo) and `docs_url`. Spree 6 builds the credentials form from the preferences, so there is no ERB form, asset manifest or `spree_extension`.
+- The dashboard lists the integration through class methods: `integration_group` (`"shipping"`), `integration_name` and the description from I18n, `logo_url` (a `data:` URI built from `app/assets/images/integration_icons/shipstation-icon.png`, the gear alone cropped edge to edge on a transparent background, since the dashboard draws it inside its own white, padded tile) and `docs_url` (the dashboard's **Setup guide** link, `docs/setup.md` on `main`). Spree 6 builds the credentials form from the preferences, so there is no ERB form, asset manifest or `spree_extension`.
 
 ### Request Flow
 
@@ -107,6 +107,10 @@ The export is XML with or without the extension (`defaults: {format: "xml"}`). T
 - Capture on dispatch is Spree's: the fulfil workflow captures payments whose method captures on dispatch. The gem has no capture code and no `auto_capture_on_dispatch`.
 - Spree 6 core sends no shipped email. The workflow publishes `fulfillment.fulfilled` with `notify_customer`; the host app's subscriber decides. On a gateway decline that event is published inside the transaction that then rolls back (core's own fulfil endpoint behaves the same).
 - Spree 6's generated test config raises on missing translations and on the deprecations it disallows (among them `Spree.t` and `Product#master`). Other deprecations, such as `order.ship_total` and `option_type.presentation`, only print a warning, and the suite is kept at zero by grepping its output: `bundle exec rspec > out.txt 2>&1; grep -c "DEPRECATION WARNING" out.txt` must print 0. Avoid all four.
+
+### Documentation
+
+The README is a short overview that links into `docs/`, one page per topic: `install.md` (developers: Gemfile, routes, production checklist), `setup.md` (store staff: Spree credentials, ShipStation Custom Store, status mapping; the dashboard's **Setup guide** target, so keep code and Gemfile steps out of it), `configuration.md`, `how-it-works.md` (export rules, ship notice, error messages, response codes), `upgrading-5-to-6.md` and `development.md`. Put new user-facing detail on the matching page, not in the README. `docs/superpowers/` holds design notes. The gemspec leaves all of `docs/` out of the gem, so the pages live on GitHub only (the gemspec's `documentation_uri` points there). If you rename `docs/setup.md`, change `docs_url` and its spec too.
 
 ### Key Files
 
