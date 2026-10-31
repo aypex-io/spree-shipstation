@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.2
+
+### Changed
+
+- The integrations dashboard shows ShipStation's square app icon instead of the
+  wide wordmark, which was too small to read in the dashboard's icon tile. The
+  icon is a 3 KB PNG, down from the 17 KB WebP.
+
 ## 6.0.1
 
 ### Fixed
