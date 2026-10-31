@@ -158,8 +158,8 @@ RSpec.describe(Spree::Integrations::Shipstation) do
       expect(encoded.unpack1("m0")).to eq(File.binread(described_class::LOGO_PATH))
     end
 
-    it("links to its docs") do
-      expect(described_class.docs_url).to eq("https://github.com/aypex-io/spree-shipstation#readme")
+    it("links to its setup guide") do
+      expect(described_class.docs_url).to eq("https://github.com/aypex-io/spree-shipstation/blob/main/docs/setup.md")
     end
 
     # Spree 6 resolves the gallery description through human_description, which
@@ -179,7 +179,7 @@ RSpec.describe(Spree::Integrations::Shipstation) do
         name: "ShipStation",
         group: "shipping",
         description: I18n.t("spree.integrations.shipstation.description"),
-        docs_url: "https://github.com/aypex-io/spree-shipstation#readme"
+        docs_url: "https://github.com/aypex-io/spree-shipstation/blob/main/docs/setup.md"
       )
     end
   end

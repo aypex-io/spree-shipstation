@@ -72,12 +72,12 @@ module Spree
       end
 
       ##
-      # Link to this extension's setup guide, shown on the dashboard's gallery card.
+      # Link to the setup guide for store staff, shown on the dashboard's gallery card.
       #
       # @return [String]
       #
       def self.docs_url
-        "https://github.com/aypex-io/spree-shipstation#readme"
+        "https://github.com/aypex-io/spree-shipstation/blob/main/docs/setup.md"
       end
 
       private
