@@ -181,6 +181,25 @@ RSpec.describe("ShipStation endpoints", type: :request) do
       end
     end
 
+    describe "an item with an image" do
+      let(:variant) { create(:variant) }
+
+      before do
+        create(:media, viewable: variant)
+        paid_order(variants: [variant])
+      end
+
+      it("exports an order whose item has an image") do
+        get "/shipstation.xml", headers: credentials(integration)
+        expect(response).to have_http_status(:ok)
+      end
+
+      it("exports an absolute ImageUrl") do
+        get "/shipstation.xml", headers: credentials(integration)
+        expect(Nokogiri::XML(response.body).at_xpath("//Item/ImageUrl")&.text).to start_with("http://www.example.com/")
+      end
+    end
+
     describe "pagination" do
       # Extra parcels on one paid order: each carries the order's items, so it
       # ships just as a parcel of its own order would.
