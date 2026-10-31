@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.4
+
+### Changed
+
+- The dashboard's **Setup guide** link opens a setup page for store staff
+  (`docs/setup.md`) instead of the README.
+- The README is now a short overview. Install, setup, configuration, how it
+  works, upgrading from 5.0 and development each have their own page under
+  `docs/`, which the gem's RubyGems page links as its documentation.
+
 ## 6.0.3
 
 ### Changed
@@ -46,8 +56,8 @@ polls.** Spree's upgrade tasks move 5.x shipment statuses to fulfillment statuse
 backfill the delivery-method providers the pickup rule reads, recompute the
 statuses of orders whose shipments were pending, ready or shipped, encrypt stored
 secrets, and carry `auto_capture_on_dispatch` over to the store's
-`capture_method`. Until then the export is empty. See "Upgrading
-from 5.0" in the README.
+`capture_method`. Until then the export is empty. See
+[Upgrading from 5.0](docs/upgrading-5-to-6.md).
 
 **Requirements:** Spree `~> 6.0`, Ruby 3.3 or newer, pagy 43.6 or newer. The 5.x
 releases do not install on Spree 6.
