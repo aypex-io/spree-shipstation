@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## 6.0.3
+
+### Changed
+
+- The dashboard icon is ShipStation's gear alone, cropped edge to edge on a
+  transparent background, so the dashboard's own tile supplies the padding and
+  white background. 6.0.2's icon was a green square that sat oddly inside that
+  tile.
+
 ## 6.0.2
 
 ### Changed
