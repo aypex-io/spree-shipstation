@@ -16,7 +16,7 @@ module Spree
         must_contain_at_least_one_number: /\d/
       }.freeze
 
-      LOGO_PATH = Spree::Shipstation::Engine.root.join("app/assets/images/integration_icons/shipstation-logo.webp")
+      LOGO_PATH = Spree::Shipstation::Engine.root.join("app/assets/images/integration_icons/shipstation-icon.png")
 
       preference :username, :string
 
@@ -68,7 +68,7 @@ module Spree
       def self.logo_url
         # Array#pack("m0") is strict Base64 without the base64 gem, which
         # Ruby 3.4 and later no longer ship as a default gem.
-        @logo_url ||= "data:image/webp;base64,#{[LOGO_PATH.binread].pack("m0")}".freeze
+        @logo_url ||= "data:image/png;base64,#{[LOGO_PATH.binread].pack("m0")}".freeze
       end
 
       ##
