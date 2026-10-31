@@ -149,11 +149,11 @@ RSpec.describe(Spree::Integrations::Shipstation) do
     end
 
     it("shows a logo the dashboard can render without the asset pipeline") do
-      expect(described_class.logo_url).to start_with("data:image/webp;base64,")
+      expect(described_class.logo_url).to start_with("data:image/png;base64,")
     end
 
     it("embeds the bundled logo file") do
-      encoded = described_class.logo_url.delete_prefix("data:image/webp;base64,")
+      encoded = described_class.logo_url.delete_prefix("data:image/png;base64,")
 
       expect(encoded.unpack1("m0")).to eq(File.binread(described_class::LOGO_PATH))
     end
