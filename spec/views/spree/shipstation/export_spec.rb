@@ -101,7 +101,7 @@ RSpec.describe("spree/shipstation/export.xml.builder", type: :view) do
     end
 
     it("exports a URL for the image") do
-      expect(text_at("//Item/ImageUrl")).to match(%r{\A/rails/active_storage/})
+      expect(text_at("//Item/ImageUrl")).to match(%r{\Ahttp://test\.host/rails/active_storage/})
     end
 
     it("still passes ShipStation's XML schema") do
@@ -116,7 +116,7 @@ RSpec.describe("spree/shipstation/export.xml.builder", type: :view) do
     end
 
     it("exports a URL for the product's image") do
-      expect(text_at("//Item/ImageUrl")).to match(%r{\A/rails/active_storage/})
+      expect(text_at("//Item/ImageUrl")).to match(%r{\Ahttp://test\.host/rails/active_storage/})
     end
   end
 

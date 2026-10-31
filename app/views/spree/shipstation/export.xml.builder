@@ -35,7 +35,9 @@ xml.Orders(pages: @pagy.pages) do
             xml.SKU item.sku
             xml.Name item.name
 
-            image_url = still_image && url_for(still_image)
+            # main_app: this isolated engine lacks Active Storage's resolver, and
+            # ShipStation needs an absolute URL it can fetch.
+            image_url = still_image && main_app.rails_blob_url(still_image)
             xml.ImageUrl image_url if image_url
 
             xml.Weight weight.value
